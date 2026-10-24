@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Карта лесной отрасли</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#f3f5f1; --panel:#fff; --fg:#1d2a22; --muted:#5d6b62; --line:#d9e0d8; --sel:#e9f3ec; --accent:#2f7d4f; --danger:#b3261e;
+  --leskhoz:#2f7d4f; --gplho:#b5651d; --wood:#6a4fb3; --saw:#c0392b; --furn:#8e6bbf; --lesn:#8fbf9a; --site:#4f9d6c; --cand:#e0a800;
+  --f-display:"Fraunces",Georgia,serif; --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#121814; --panel:#18211b; --fg:#e3eae4; --muted:#9aa89e; --line:#2a362d; --sel:#1f3326; --accent:#5cc185; --danger:#ff8a80;
+  --leskhoz:#5cc185; --gplho:#e39a52; --wood:#a891f0; --saw:#ff7a66; --furn:#c7b1ef; --lesn:#4c7a58; --site:#7fd3a0; --cand:#ffd24d; color-scheme:dark}}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.4 var(--f-body)}
+button,input,select,textarea{font:inherit;color:inherit}
+input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;box-sizing:border-box}
+textarea{resize:vertical;min-height:60px}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:7px 12px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+button.danger{color:var(--danger)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+h1,h2{font-family:var(--f-display);font-weight:600;margin:0}
+.k{color:var(--muted);font-size:12px}
+/* login */
+#login{min-height:100%;display:grid;place-items:center;padding:16px;box-sizing:border-box}
+#login form{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;width:min(360px,100%);display:grid;gap:12px;box-sizing:border-box}
+.err{color:var(--danger);font-size:13px}
+/* app */
+#app{height:100%;display:grid;grid-template-columns:350px 1fr}
+aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0}
+.head{padding:14px 16px;display:grid;gap:8px;border-bottom:1px solid var(--line)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.row{display:flex;gap:6px}
+#list{list-style:none;margin:0;padding:0;overflow:auto;flex:1}
+#list li{padding:8px 16px;border-bottom:1px solid var(--line);cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:baseline}
+#list li:hover,#list li.on{background:var(--sel)}
+#list .r{grid-column:2/4;color:var(--muted);font-size:12px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+.pill{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.client{border-color:var(--accent);color:var(--accent)}
+.mapwrap{position:relative;min-width:0}
+#map{position:absolute;inset:0}
+#panel{position:absolute;top:12px;right:12px;bottom:12px;z-index:1000;width:min(380px,calc(100% - 24px));background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgb(0 0 0/.15);display:flex;flex-direction:column;min-height:0}
+#panel .ph{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:start}
+#panel .pb{padding:12px 16px;overflow:auto;display:grid;gap:10px;align-content:start}
+#panel label{display:grid;gap:3px;font-size:12px;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.comment{border-left:3px solid var(--line);padding:2px 0 2px 8px}
+#addHint{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:1000;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.leaflet-container{background:var(--bg);font-family:var(--f-body)}
+@media (max-width:760px){#app{grid-template-columns:1fr;grid-template-rows:42vh 1fr}aside{border-right:0;border-bottom:1px solid var(--line)}#panel{top:auto;height:70%}}
+</style>
+</head>
+<body>
+<div id="login" hidden>
+  <form id="loginForm">
+    <h1>Карта лесной отрасли</h1>
+    <p class="k">Войдите под учётной записью, которую вам выдал администратор.</p>
+    <input id="email" type="email" placeholder="Электронная почта" autocomplete="username" required>
+    <input id="password" type="password" placeholder="Пароль" autocomplete="current-password" required>
+    <button class="primary" type="submit">Войти</button>
+    <div class="err" id="loginErr"></div>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <aside>
+    <div class="head">
+      <div class="top"><h1 style="font-size:20px">Карта</h1><span class="k" id="me"></span></div>
+      <input id="q" type="search" placeholder="Поиск: название, город, телефон">
+      <div class="row"><select id="fType"></select><select id="fRegion"><option value="">Все области</option></select></div>
+      <div class="row"><select id="fStatus"></select><select id="fOwner"><option value="">Все ответственные</option><option value="me">Мои</option><option value="none">Без ответственного</option></select></div>
+      <div class="row"><button class="primary" id="addBtn" type="button">+ Добавить точку</button><button id="reload" type="button">Обновить</button><button id="logout" type="button">Выйти</button></div>
+      <div class="k" id="cnt"></div>
+    </div>
+    <ul id="list"></ul>
+  </aside>
+  <div class="mapwrap">
+    <div id="map"></div>
+    <div id="addHint" hidden>Кликните по карте, где находится объект. <button id="addCancel" type="button">Отмена</button></div>
+    <div id="panel" hidden>
+      <div class="ph"><div><span class="pill" id="pType"></span><h2 id="pTitle" style="font-size:18px;margin-top:4px"></h2></div><button id="pClose" type="button" aria-label="Закрыть">✕</button></div>
+      <form class="pb" id="pForm">
+        <label>Название<input id="e_name" required></label>
+        <div class="grid2">
+          <label>Тип<select id="e_type"></select></label>
+          <label>Статус<select id="e_status"></select></label>
+        </div>
+        <label>Ответственный<select id="e_owner"><option value="">—</option></select></label>
+        <label>Адрес<input id="e_address"></label>
+        <div class="grid2">
+          <label>Телефон<input id="e_phone"></label>
+          <label>Email<input id="e_email"></label>
+        </div>
+        <div class="grid2">
+          <label>Сайт<input id="e_website"></label>
+          <label>УНП<input id="e_unp"></label>
+        </div>
+        <label>Область<select id="e_region"></select></label>
+        <label>Описание<textarea id="e_notes"></textarea></label>
+        <div class="k" id="pMeta"></div>
+        <div class="row"><button class="primary" type="submit">Сохранить</button><button type="button" id="pMove">Переместить точку</button><button type="button" class="danger" id="pDelete" hidden>Удалить</button></div>
+        <div class="err" id="pErr"></div>
+        <h2 style="font-size:15px;margin-top:6px">Комментарии</h2>
+        <div id="comments" style="display:grid;gap:8px"></div>
+        <textarea id="newComment" placeholder="Например: позвонили, перезвонить в понедельник"></textarea>
+        <button type="button" id="addComment">Добавить комментарий</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+const TYPES={leskhoz:['Лесхоз','--leskhoz',6.5],gplho:['Объединение (ГПЛХО)','--gplho',8],sawmill:['Пилорама','--saw',5.5],wood:['Деревообработка (крупная)','--wood',6.5],wood_osm:['Деревообработка','--wood',5],furniture:['Мебельное производство','--furn',5],leskhoz_site:['Объект лесхоза','--site',4],lesnichestvo:['Лесничество','--lesn',3.5],candidate:['Кандидат со спутника','--cand',6]};
+const STATUSES={new:'Новый',to_check:'Проверить',contacted:'Связались',negotiation:'Переговоры',client:'Клиент',refused:'Отказ',closed:'Не работает'};
+const REGIONS=['Брестская область','Витебская область','Гомельская область','Гродненская область','Минская область','Могилевская область','г. Минск'];
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const sb=supabase.createClient(KARTA_CONFIG.supabaseUrl,KARTA_CONFIG.supabaseAnonKey);
+let me=null,profiles=[],places=[],markers=new Map(),cur=null,mode=null,map=null;
+
+function opts(sel,obj,first){sel.innerHTML=first?`<option value="">${first}</option>`:'';for(const[k,v]of Object.entries(obj))sel.add(new Option(Array.isArray(v)?v[0]:v,k));}
+opts($('fType'),TYPES,'Все типы');opts($('fStatus'),STATUSES,'Все статусы');opts($('e_type'),TYPES);opts($('e_status'),STATUSES);
+REGIONS.forEach(r=>{$('fRegion').add(new Option(r,r));});$('e_region').add(new Option('—',''));REGIONS.forEach(r=>$('e_region').add(new Option(r,r)));
+
+async function boot(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session){$('login').hidden=false;$('app').hidden=true;return;}
+  $('login').hidden=true;$('app').hidden=false;
+  me=session.user;
+  if(!map) initMap();
+  await loadAll();
+}
+$('loginForm').onsubmit=async e=>{e.preventDefault();$('loginErr').textContent='';
+  const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+  if(error){$('loginErr').textContent='Не получилось войти: проверьте почту и пароль.';return;} boot();};
+$('logout').onclick=async()=>{await sb.auth.signOut();location.reload();};
+
+function initMap(){
+  map=L.map('map',{preferCanvas:true,zoomSnap:.5}).setView([53.7,27.9],7);
+  const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© участники OpenStreetMap'});
+  const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Снимки © Esri, Maxar, Earthstar Geographics'});
+  const labels=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19});
+  osm.addTo(map);
+  L.control.layers({'Схема':osm,'Спутник':sat,'Спутник с подписями':L.layerGroup([sat,labels])}).addTo(map);
+  map.on('click',e=>{if(mode==='add')createAt(e.latlng);else if(mode==='move')moveTo(e.latlng);});
+}
+async function fetchAll(table,select){let out=[],from=0;for(;;){const{data,error}=await sb.from(table).select(select).range(from,from+999);if(error)throw error;out=out.concat(data);if(data.length<1000)break;from+=1000;}return out;}
+async function loadAll(){
+  try{
+    [profiles,places]=await Promise.all([fetchAll('profiles','id,full_name,role'),fetchAll('places','*')]);
+  }catch(err){$('cnt').textContent='Ошибка загрузки: '+err.message;return;}
+  const mine=profiles.find(p=>p.id===me.id);$('me').textContent=(mine?.full_name||me.email)+(mine?.role==='admin'?' · админ':'');
+  const o=$('e_owner');o.innerHTML='<option value="">—</option>';profiles.forEach(p=>o.add(new Option(p.full_name||p.id,p.id)));
+  markers.forEach(m=>m.remove());markers.clear();
+  places.forEach(p=>{if(p.lat!=null)markers.set(p.id,mkMarker(p));});
+  render();
+}
+function mkMarker(p){const t=TYPES[p.type]||TYPES.wood_osm;return L.circleMarker([p.lat,p.lon],{radius:t[2],weight:p.status==='client'?3:1.5,color:p.status==='client'?css('--fg'):css('--panel'),fillColor:css(t[1]),fillOpacity:1}).bindTooltip(p.name).on('click',()=>openPlace(p.id));}
+function visible(p){
+  const q=$('q').value.trim().toLowerCase(),t=$('fType').value,r=$('fRegion').value,s=$('fStatus').value,o=$('fOwner').value;
+  return (!q||[p.name,p.address,p.phone,p.notes].join(' ').toLowerCase().includes(q))&&(!t||p.type===t)&&(!r||p.region===r)&&(!s||p.status===s)&&(!o||(o==='me'?p.owner===me.id:o==='none'?!p.owner:true));
+}
+function render(){
+  const list=$('list');list.innerHTML='';let n=0;const frag=document.createDocumentFragment();
+  places.forEach(p=>{const m=markers.get(p.id);const ok=visible(p);if(m){ok?m.addTo(map):m.remove();}
+    if(!ok)return;n++;if(n>500)return;
+    const li=document.createElement('li');li.dataset.id=p.id;if(p.id===cur)li.className='on';
+    const t=TYPES[p.type]||TYPES.wood_osm;
+    li.innerHTML=`<i class="dot" style="background:var(${t[1]})"></i><span></span><span class="pill ${p.status}"></span><span class="r"></span>`;
+    li.children[1].textContent=p.name;li.children[2].textContent=STATUSES[p.status]||p.status;li.children[3].textContent=[p.address,p.region].filter(Boolean).join(' · ');
+    li.onclick=()=>openPlace(p.id,true);frag.appendChild(li);});
+  list.appendChild(frag);$('cnt').textContent=`Показано ${n} из ${places.length}`+(n>500?' (в списке первые 500, на карте все)':'');
+}
+['q','fType','fRegion','fStatus','fOwner'].forEach(id=>$(id).addEventListener('input',render));
+$('reload').onclick=loadAll;
+
+async function openPlace(id,fly){
+  cur=id;const p=places.find(x=>x.id===id);if(!p)return;
+  $('panel').hidden=false;$('pTitle').textContent=p.name;$('pType').textContent=(TYPES[p.type]||[p.type])[0];
+  for(const f of['name','type','status','address','phone','email','website','unp','region','notes'])$('e_'+f).value=p[f]??'';
+  $('e_owner').value=p.owner||'';
+  $('pMeta').textContent=`Источник: ${p.source||'добавлено вручную'} · изменено ${new Date(p.updated_at).toLocaleString('ru-RU')}`;
+  $('pDelete').hidden=!(profiles.find(x=>x.id===me.id)?.role==='admin');$('pErr').textContent='';
+  if(fly&&p.lat!=null)map.setView([p.lat,p.lon],Math.max(map.getZoom(),13));
+  render();loadComments(id);
+}
+$('pClose').onclick=()=>{$('panel').hidden=true;cur=null;render();};
+$('pForm').onsubmit=async e=>{e.preventDefault();const p=places.find(x=>x.id===cur);
+  const patch={};for(const f of['name','type','status','address','phone','email','website','unp','region','notes'])patch[f]=$('e_'+f).value.trim()||null;
+  patch.name=patch.name||p.name;patch.type=patch.type||p.type;patch.status=patch.status||'new';patch.owner=$('e_owner').value||null;
+  const{data,error}=await sb.from('places').update(patch).eq('id',cur).select().single();
+  if(error){$('pErr').textContent='Не сохранилось: '+error.message;return;}
+  Object.assign(p,data);refreshMarker(p);openPlace(p.id);$('pErr').textContent='Сохранено';};
+function refreshMarker(p){markers.get(p.id)?.remove();if(p.lat!=null)markers.set(p.id,mkMarker(p));render();}
+$('pDelete').onclick=async()=>{if($('pDelete').dataset.confirm!=='1'){$('pDelete').dataset.confirm='1';$('pDelete').textContent='Точно удалить?';return;}
+  $('pDelete').dataset.confirm='';$('pDelete').textContent='Удалить';
+  const{error}=await sb.from('places').delete().eq('id',cur);if(error){$('pErr').textContent=error.message;return;}
+  markers.get(cur)?.remove();markers.delete(cur);places=places.filter(x=>x.id!==cur);$('panel').hidden=true;cur=null;render();};
+
+async function loadComments(id){
+  const{data,error}=await sb.from('place_comments').select('*').eq('place_id',id).order('created_at',{ascending:false});
+  const box=$('comments');box.innerHTML='';if(error){box.textContent=error.message;return;}
+  if(!data.length){box.innerHTML='<span class="k">Пока нет комментариев.</span>';return;}
+  data.forEach(c=>{const d=document.createElement('div');d.className='comment';const a=profiles.find(x=>x.id===c.author);
+    d.innerHTML='<div class="k"></div><div></div>';d.children[0].textContent=(a?.full_name||'—')+' · '+new Date(c.created_at).toLocaleString('ru-RU');d.children[1].textContent=c.body;box.appendChild(d);});
+}
+$('addComment').onclick=async()=>{const body=$('newComment').value.trim();if(!body||!cur)return;
+  const{error}=await sb.from('place_comments').insert({place_id:cur,author:me.id,body});if(error){$('pErr').textContent=error.message;return;}
+  $('newComment').value='';loadComments(cur);};
+
+$('addBtn').onclick=()=>{mode='add';$('addHint').hidden=false;$('addHint').firstChild.textContent='Кликните по карте, где находится объект. ';};
+$('pMove').onclick=()=>{if(!cur)return;mode='move';$('addHint').hidden=false;$('addHint').firstChild.textContent='Кликните по карте в новом месте точки. ';};
+$('addCancel').onclick=()=>{mode=null;$('addHint').hidden=true;};
+async function createAt(ll){mode=null;$('addHint').hidden=true;
+  const{data,error}=await sb.from('places').insert({name:'Новая точка',type:'candidate',status:'to_check',lat:ll.lat,lon:ll.lng,source:'добавлено вручную',created_by:me.id,owner:me.id}).select().single();
+  if(error){alert(error.message);return;}places.unshift(data);markers.set(data.id,mkMarker(data));openPlace(data.id);$('e_name').select();}
+async function moveTo(ll){mode=null;$('addHint').hidden=true;const p=places.find(x=>x.id===cur);
+  const{data,error}=await sb.from('places').update({lat:ll.lat,lon:ll.lng}).eq('id',cur).select().single();
+  if(error){$('pErr').textContent=error.message;return;}Object.assign(p,data);refreshMarker(p);}
+
+boot();
+</script>
+</body>
+</html>

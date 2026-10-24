@@ -1,0 +1,22 @@
+# Карта лесной отрасли Беларуси
+
+Веб-карта лесхозов, лесничеств, пилорам и деревообрабатывающих предприятий с простой CRM для команды.
+
+## Как устроено
+- `index.html` — весь сайт (Leaflet + Supabase JS). Слои «Схема» (OpenStreetMap) и «Спутник» (Esri).
+- `config.js` — адрес проекта Supabase и публичный ключ `anon`.
+- `supabase/setup.sql` — схема базы, права доступа и начальные данные. Запускается один раз в Supabase → SQL Editor.
+- `data/` — исходные таблицы (CSV).
+
+## Запуск
+1. В Supabase выполнить `supabase/setup.sql`.
+2. В Supabase → Authentication → Sign In / Providers отключить «Allow new users to sign up».
+3. Сотрудников добавлять в Authentication → Users → Add user (почта + пароль, «Auto confirm»).
+4. Сделать первого администратора: `update profiles set role = 'admin' where id = (select id from auth.users where email = '...');`
+5. Вписать URL и ключ в `config.js`.
+
+## Источники данных
+- Список лесхозов: Министерство лесного хозяйства (mlh.gov.by).
+- Крупные предприятия: обзор «Деревообработка в Беларуси 2023» (investinbelarus.by).
+- Пилорамы, производства, лесничества: © участники OpenStreetMap, лицензия ODbL.
+- Кандидаты со спутника: ручной просмотр снимков Esri World Imagery, требуют проверки.
