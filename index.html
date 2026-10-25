@@ -8,12 +8,12 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 :root{
-  --bg:#f3f5f1; --panel:#fff; --fg:#1d2a22; --muted:#5d6b62; --line:#d9e0d8; --sel:#e9f3ec; --accent:#2f7d4f; --danger:#b3261e;
+  --bg:#f3f5f1; --panel:#fff; --fg:#1d2a22; --muted:#5d6b62; --line:#d9e0d8; --sel:#e9f3ec; --accent:#2f7d4f; --danger:#b3261e; --sel-ring:#e8590c;
   --leskhoz:#2f7d4f; --gplho:#b5651d; --wood:#6a4fb3; --saw:#c0392b; --furn:#8e6bbf; --lesn:#8fbf9a; --site:#4f9d6c; --cand:#e0a800;
   --f-display:"Fraunces",Georgia,serif; --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root{
-  --bg:#121814; --panel:#18211b; --fg:#e3eae4; --muted:#9aa89e; --line:#2a362d; --sel:#1f3326; --accent:#5cc185; --danger:#ff8a80;
+  --bg:#121814; --panel:#18211b; --fg:#e3eae4; --muted:#9aa89e; --line:#2a362d; --sel:#1f3326; --accent:#5cc185; --danger:#ff8a80; --sel-ring:#ffa94d;
   --leskhoz:#5cc185; --gplho:#e39a52; --wood:#a891f0; --saw:#ff7a66; --furn:#c7b1ef; --lesn:#4c7a58; --site:#7fd3a0; --cand:#ffd24d; color-scheme:dark}}
 [hidden]{display:none!important}
 html,body{height:100%;margin:0}
@@ -167,24 +167,39 @@ async function loadAll(){
   const mine=profiles.find(p=>p.id===me.id);$('me').textContent=(mine?.full_name||me.email)+(mine?.role==='admin'?' · админ':'');
   const o=$('e_owner');o.innerHTML='<option value="">—</option>';profiles.forEach(p=>o.add(new Option(p.full_name||p.id,p.id)));
   markers.forEach(m=>m.remove());markers.clear();
-  places.forEach(p=>{if(p.lat!=null)markers.set(p.id,mkMarker(p));});
+  spread();places.forEach(p=>{if(p.lat!=null)markers.set(p.id,mkMarker(p));});
   render();
 }
-function mkMarker(p){const t=TYPES[p.type]||TYPES.wood_osm;return L.circleMarker([p.lat,p.lon],{radius:t[2],weight:p.status==='client'?3:1.5,color:p.status==='client'?css('--fg'):css('--panel'),fillColor:css(t[1]),fillOpacity:1}).bindTooltip(p.name).on('click',()=>openPlace(p.id));}
+function mStyle(p){const t=TYPES[p.type]||TYPES.wood_osm,on=p.id===cur;
+  return on?{radius:t[2]+6,weight:4,color:css('--sel-ring'),fillColor:css(t[1]),fillOpacity:1}:{radius:t[2],weight:p.status==='client'?3:1.5,color:p.status==='client'?css('--fg'):css('--panel'),fillColor:css(t[1]),fillOpacity:1};}
+// точки с одинаковыми координатами раскладываем по маленькому кругу, чтобы каждую можно было выбрать
+let offs=new Map();
+function spread(){offs=new Map();const g=new Map();places.forEach(p=>{if(p.lat==null)return;const k=(+p.lat).toFixed(5)+','+(+p.lon).toFixed(5);g.has(k)?g.get(k).push(p):g.set(k,[p]);});
+  g.forEach(a=>{if(a.length<2)return;a.forEach((p,i)=>{const r=0.00025,f=2*Math.PI*i/a.length;offs.set(p.id,[r*Math.sin(f),r*Math.cos(f)/Math.cos(p.lat*Math.PI/180)]);});});}
+function pos(p){const o=offs.get(p.id)||[0,0];return[+p.lat+o[0],+p.lon+o[1]];}
+function mkMarker(p){return L.circleMarker(pos(p),mStyle(p)).bindTooltip(p.name).on('click',()=>openPlace(p.id));}
+let halo=null;
+function highlight(){
+  markers.forEach((m,id)=>{const p=places.find(x=>x.id===id);if(p)m.setStyle(mStyle(p));});
+  halo?.remove();halo=null;markers.forEach(x=>x.closeTooltip());const m=markers.get(cur);if(!m)return;
+  if(!map.hasLayer(m))m.addTo(map);m.bringToFront();
+  halo=L.circleMarker(m.getLatLng(),{radius:22,weight:3,color:css('--sel-ring'),fill:false,interactive:false}).addTo(map);
+  m.openTooltip();
+}
 function visible(p){
   const q=$('q').value.trim().toLowerCase(),t=$('fType').value,r=$('fRegion').value,s=$('fStatus').value,o=$('fOwner').value;
   return (!q||[p.name,p.address,p.phone,p.notes].join(' ').toLowerCase().includes(q))&&(!t||p.type===t)&&(!r||p.region===r)&&(!s||p.status===s)&&(!o||(o==='me'?p.owner===me.id:o==='none'?!p.owner:true));
 }
 function render(){
   const list=$('list');list.innerHTML='';let n=0;const frag=document.createDocumentFragment();
-  places.forEach(p=>{const m=markers.get(p.id);const ok=visible(p);if(m){ok?m.addTo(map):m.remove();}
+  places.forEach(p=>{const m=markers.get(p.id);const ok=visible(p)||p.id===cur;if(m){ok?m.addTo(map):m.remove();}
     if(!ok)return;n++;if(n>500)return;
     const li=document.createElement('li');li.dataset.id=p.id;if(p.id===cur)li.className='on';
     const t=TYPES[p.type]||TYPES.wood_osm;
     li.innerHTML=`<i class="dot" style="background:var(${t[1]})"></i><span></span><span class="pill ${p.status}"></span><span class="r"></span>`;
-    li.children[1].textContent=p.name;li.children[2].textContent=STATUSES[p.status]||p.status;li.children[3].textContent=[p.address,p.region].filter(Boolean).join(' · ');
+    li.children[1].textContent=p.name;li.children[2].textContent=STATUSES[p.status]||p.status;li.children[3].textContent=[p.address,p.region,p.lat==null?'нет на карте':''].filter(Boolean).join(' · ');
     li.onclick=()=>openPlace(p.id,true);frag.appendChild(li);});
-  list.appendChild(frag);$('cnt').textContent=`Показано ${n} из ${places.length}`+(n>500?' (в списке первые 500, на карте все)':'');
+  list.appendChild(frag);highlight();$('cnt').textContent=`Показано ${n} из ${places.length}`+(n>500?' (в списке первые 500, на карте все)':'');
 }
 ['q','fType','fRegion','fStatus','fOwner'].forEach(id=>$(id).addEventListener('input',render));
 $('reload').onclick=loadAll;
@@ -197,11 +212,11 @@ async function openPlace(id,fly){
   $('pMeta').textContent=`Источник: ${p.source||'добавлено вручную'} · изменено ${new Date(p.updated_at).toLocaleString('ru-RU')}`;
   $('pDelete').hidden=!(profiles.find(x=>x.id===me.id)?.role==='admin');$('pErr').textContent='';
   showCoords(p);
-  if(fly&&p.lat!=null)map.setView([p.lat,p.lon],Math.max(map.getZoom(),13));
+  if(fly&&p.lat!=null){map.setView(pos(p),Math.max(map.getZoom(),15),{animate:false});if(innerWidth>760)map.panBy([$('panel').offsetWidth/2,0],{animate:false});}
   render();loadComments(id);
 }
 function showCoords(p){
-  const ok=p.lat!=null,c=ok?`${(+p.lat).toFixed(6)}, ${(+p.lon).toFixed(6)}`:'нет';
+  const ok=p.lat!=null,c=ok?`${(+p.lat).toFixed(6)}, ${(+p.lon).toFixed(6)}`:'нет, поставьте точку кнопкой «Переместить точку»';
   $('pCoords').textContent=c;$('pCopy').hidden=!ok;$('pNavi').hidden=!ok;$('pYmaps').hidden=!ok;if(!ok)return;
   $('pNavi').href=`yandexnavi://build_route_on_map?lat_to=${p.lat}&lon_to=${p.lon}`;
   $('pYmaps').href=`https://yandex.by/maps/?pt=${p.lon},${p.lat}&z=16&l=map&rtext=~${p.lat},${p.lon}&rtt=auto`;
@@ -214,7 +229,7 @@ $('pForm').onsubmit=async e=>{e.preventDefault();const p=places.find(x=>x.id===c
   const{data,error}=await sb.from('places').update(patch).eq('id',cur).select().single();
   if(error){$('pErr').textContent='Не сохранилось: '+error.message;return;}
   Object.assign(p,data);refreshMarker(p);openPlace(p.id);$('pErr').textContent='Сохранено';};
-function refreshMarker(p){markers.get(p.id)?.remove();if(p.lat!=null)markers.set(p.id,mkMarker(p));render();}
+function refreshMarker(p){offs.delete(p.id);markers.get(p.id)?.remove();if(p.lat!=null)markers.set(p.id,mkMarker(p));render();}
 $('pDelete').onclick=async()=>{if($('pDelete').dataset.confirm!=='1'){$('pDelete').dataset.confirm='1';$('pDelete').textContent='Точно удалить?';return;}
   $('pDelete').dataset.confirm='';$('pDelete').textContent='Удалить';
   const{error}=await sb.from('places').delete().eq('id',cur);if(error){$('pErr').textContent=error.message;return;}
