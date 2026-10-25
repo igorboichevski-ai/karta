@@ -54,6 +54,9 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .comment{border-left:3px solid var(--line);padding:2px 0 2px 8px}
 #addHint{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:1000;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 .leaflet-container{background:var(--bg);font-family:var(--f-body)}
+.coords{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+a.btn{display:inline-block;text-decoration:none;color:inherit;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:7px 12px}
+a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 @media (max-width:760px){#app{grid-template-columns:1fr;grid-template-rows:42vh 1fr}aside{border-right:0;border-bottom:1px solid var(--line)}#panel{top:auto;height:70%}}
 </style>
 </head>
@@ -87,6 +90,8 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
     <div id="panel" hidden>
       <div class="ph"><div><span class="pill" id="pType"></span><h2 id="pTitle" style="font-size:18px;margin-top:4px"></h2></div><button id="pClose" type="button" aria-label="Закрыть">✕</button></div>
       <form class="pb" id="pForm">
+        <div class="coords"><span class="k">Координаты</span> <b id="pCoords"></b> <button type="button" id="pCopy">Копировать</button></div>
+        <div class="row"><a class="btn primary" id="pNavi" href="#">Маршрут в Яндекс Навигаторе</a><a class="btn" id="pYmaps" href="#" target="_blank" rel="noopener">Яндекс Карты</a></div>
         <label>Название<input id="e_name" required></label>
         <div class="grid2">
           <label>Тип<select id="e_type"></select></label>
@@ -191,9 +196,17 @@ async function openPlace(id,fly){
   $('e_owner').value=p.owner||'';
   $('pMeta').textContent=`Источник: ${p.source||'добавлено вручную'} · изменено ${new Date(p.updated_at).toLocaleString('ru-RU')}`;
   $('pDelete').hidden=!(profiles.find(x=>x.id===me.id)?.role==='admin');$('pErr').textContent='';
+  showCoords(p);
   if(fly&&p.lat!=null)map.setView([p.lat,p.lon],Math.max(map.getZoom(),13));
   render();loadComments(id);
 }
+function showCoords(p){
+  const ok=p.lat!=null,c=ok?`${(+p.lat).toFixed(6)}, ${(+p.lon).toFixed(6)}`:'нет';
+  $('pCoords').textContent=c;$('pCopy').hidden=!ok;$('pNavi').hidden=!ok;$('pYmaps').hidden=!ok;if(!ok)return;
+  $('pNavi').href=`yandexnavi://build_route_on_map?lat_to=${p.lat}&lon_to=${p.lon}`;
+  $('pYmaps').href=`https://yandex.by/maps/?pt=${p.lon},${p.lat}&z=16&l=map&rtext=~${p.lat},${p.lon}&rtt=auto`;
+}
+$('pCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('pCoords').textContent);$('pCopy').textContent='Скопировано';}catch{$('pCopy').textContent='Не скопировалось';}setTimeout(()=>$('pCopy').textContent='Копировать',1500);};
 $('pClose').onclick=()=>{$('panel').hidden=true;cur=null;render();};
 $('pForm').onsubmit=async e=>{e.preventDefault();const p=places.find(x=>x.id===cur);
   const patch={};for(const f of['name','type','status','address','phone','email','website','unp','region','notes'])patch[f]=$('e_'+f).value.trim()||null;
@@ -226,7 +239,7 @@ async function createAt(ll){mode=null;$('addHint').hidden=true;
   if(error){alert(error.message);return;}places.unshift(data);markers.set(data.id,mkMarker(data));openPlace(data.id);$('e_name').select();}
 async function moveTo(ll){mode=null;$('addHint').hidden=true;const p=places.find(x=>x.id===cur);
   const{data,error}=await sb.from('places').update({lat:ll.lat,lon:ll.lng}).eq('id',cur).select().single();
-  if(error){$('pErr').textContent=error.message;return;}Object.assign(p,data);refreshMarker(p);}
+  if(error){$('pErr').textContent=error.message;return;}Object.assign(p,data);refreshMarker(p);showCoords(p);}
 
 boot();
 </script>
