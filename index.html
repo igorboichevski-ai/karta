@@ -44,6 +44,10 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
 .pill{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
 .pill.client{border-color:var(--accent);color:var(--accent)}
+#list li.hid{opacity:.6}
+.chk{display:flex;align-items:center;gap:6px;cursor:pointer}
+.chk input{width:auto;margin:0}
+.hidnote{background:var(--sel);border-radius:6px;padding:6px 8px;font-size:13px}
 .mapwrap{position:relative;min-width:0}
 #map{position:absolute;inset:0}
 #panel{position:absolute;top:12px;right:12px;bottom:12px;z-index:1000;width:min(380px,calc(100% - 24px));background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgb(0 0 0/.15);display:flex;flex-direction:column;min-height:0}
@@ -80,6 +84,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
       <div class="row"><select id="fType"></select><select id="fRegion"><option value="">Все области</option></select></div>
       <div class="row"><select id="fStatus"></select><select id="fOwner"><option value="">Все ответственные</option><option value="me">Мои</option><option value="none">Без ответственного</option></select></div>
       <div class="row"><button class="primary" id="addBtn" type="button">+ Добавить точку</button><button id="reload" type="button">Обновить</button><button id="logout" type="button">Выйти</button></div>
+      <label class="chk k"><input type="checkbox" id="fHidden"> Показать скрытые точки</label>
       <div class="k" id="cnt"></div>
     </div>
     <ul id="list"></ul>
@@ -109,8 +114,9 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
         </div>
         <label>Область<select id="e_region"></select></label>
         <label>Описание<textarea id="e_notes"></textarea></label>
+        <div class="hidnote" id="pHidNote" hidden></div>
         <div class="k" id="pMeta"></div>
-        <div class="row"><button class="primary" type="submit">Сохранить</button><button type="button" id="pMove">Переместить точку</button><button type="button" class="danger" id="pDelete" hidden>Удалить</button></div>
+        <div class="row" style="flex-wrap:wrap"><button class="primary" type="submit">Сохранить</button><button type="button" id="pMove">Переместить точку</button><button type="button" id="pHide">Скрыть с карты</button><button type="button" class="danger" id="pDelete" hidden>Удалить</button></div>
         <div class="err" id="pErr"></div>
         <h2 style="font-size:15px;margin-top:6px">Комментарии</h2>
         <div id="comments" style="display:grid;gap:8px"></div>
@@ -171,6 +177,7 @@ async function loadAll(){
   render();
 }
 function mStyle(p){const t=TYPES[p.type]||TYPES.wood_osm,on=p.id===cur;
+  if(p.hidden&&!on)return{radius:t[2],weight:1.5,color:css('--muted'),dashArray:'3 3',fillColor:css(t[1]),fillOpacity:.35};
   return on?{radius:t[2]+6,weight:4,color:css('--sel-ring'),fillColor:css(t[1]),fillOpacity:1}:{radius:t[2],weight:p.status==='client'?3:1.5,color:p.status==='client'?css('--fg'):css('--panel'),fillColor:css(t[1]),fillOpacity:1};}
 // точки с одинаковыми координатами раскладываем по маленькому кругу, чтобы каждую можно было выбрать
 let offs=new Map();
@@ -188,20 +195,21 @@ function highlight(){
 }
 function visible(p){
   const q=$('q').value.trim().toLowerCase(),t=$('fType').value,r=$('fRegion').value,s=$('fStatus').value,o=$('fOwner').value;
-  return (!q||[p.name,p.address,p.phone,p.notes].join(' ').toLowerCase().includes(q))&&(!t||p.type===t)&&(!r||p.region===r)&&(!s||p.status===s)&&(!o||(o==='me'?p.owner===me.id:o==='none'?!p.owner:true));
+  return (!q||[p.name,p.address,p.phone,p.notes].join(' ').toLowerCase().includes(q))&&(!t||p.type===t)&&(!r||p.region===r)&&(!s||p.status===s)&&(!o||(o==='me'?p.owner===me.id:o==='none'?!p.owner:true))&&(!p.hidden||$('fHidden').checked);
 }
 function render(){
   const list=$('list');list.innerHTML='';let n=0;const frag=document.createDocumentFragment();
   places.forEach(p=>{const m=markers.get(p.id);const ok=visible(p)||p.id===cur;if(m){ok?m.addTo(map):m.remove();}
     if(!ok)return;n++;if(n>500)return;
-    const li=document.createElement('li');li.dataset.id=p.id;if(p.id===cur)li.className='on';
+    const li=document.createElement('li');li.dataset.id=p.id;li.className=(p.id===cur?'on ':'')+(p.hidden?'hid':'');
     const t=TYPES[p.type]||TYPES.wood_osm;
     li.innerHTML=`<i class="dot" style="background:var(${t[1]})"></i><span></span><span class="pill ${p.status}"></span><span class="r"></span>`;
-    li.children[1].textContent=p.name;li.children[2].textContent=STATUSES[p.status]||p.status;li.children[3].textContent=[p.address,p.region,p.lat==null?'нет на карте':''].filter(Boolean).join(' · ');
+    li.children[1].textContent=p.name;li.children[2].textContent=STATUSES[p.status]||p.status;li.children[3].textContent=[p.hidden?'скрыта':'',p.address,p.region,p.lat==null?'нет на карте':''].filter(Boolean).join(' · ');
     li.onclick=()=>openPlace(p.id,true);frag.appendChild(li);});
-  list.appendChild(frag);highlight();$('cnt').textContent=`Показано ${n} из ${places.length}`+(n>500?' (в списке первые 500, на карте все)':'');
+  list.appendChild(frag);highlight();const nh=places.filter(p=>p.hidden).length;
+  $('cnt').textContent=`Показано ${n} из ${places.length}`+(nh?` · скрыто ${nh}`:'')+(n>500?' (в списке первые 500, на карте все)':'');
 }
-['q','fType','fRegion','fStatus','fOwner'].forEach(id=>$(id).addEventListener('input',render));
+['q','fType','fRegion','fStatus','fOwner','fHidden'].forEach(id=>$(id).addEventListener('input',render));
 $('reload').onclick=loadAll;
 
 async function openPlace(id,fly){
@@ -211,7 +219,7 @@ async function openPlace(id,fly){
   $('e_owner').value=p.owner||'';
   $('pMeta').textContent=`Источник: ${p.source||'добавлено вручную'} · изменено ${new Date(p.updated_at).toLocaleString('ru-RU')}`;
   $('pDelete').hidden=!(profiles.find(x=>x.id===me.id)?.role==='admin');$('pErr').textContent='';
-  showCoords(p);
+  showCoords(p);showHidden(p);
   if(fly&&p.lat!=null){map.setView(pos(p),Math.max(map.getZoom(),15),{animate:false});if(innerWidth>760)map.panBy([$('panel').offsetWidth/2,0],{animate:false});}
   render();loadComments(id);
 }
@@ -221,6 +229,17 @@ function showCoords(p){
   $('pNavi').href=`yandexnavi://build_route_on_map?lat_to=${p.lat}&lon_to=${p.lon}`;
   $('pYmaps').href=`https://yandex.by/maps/?pt=${p.lon},${p.lat}&z=16&l=map&rtext=~${p.lat},${p.lon}&rtt=auto`;
 }
+function showHidden(p){
+  $('pHide').textContent=p.hidden?'Вернуть на карту':'Скрыть с карты';$('pHidNote').hidden=!p.hidden;
+  if(p.hidden){const a=profiles.find(x=>x.id===p.hidden_by);$('pHidNote').textContent='Точка скрыта с карты'+(a?' · '+(a.full_name||'—'):'')+(p.hidden_at?' · '+new Date(p.hidden_at).toLocaleString('ru-RU'):'');}
+}
+// скрытая точка пропадает с карты и из списка; увидеть её можно галочкой «Показать скрытые точки»
+$('pHide').onclick=async()=>{const p=places.find(x=>x.id===cur);if(!p)return;const h=!p.hidden;
+  const{data,error}=await sb.from('places').update({hidden:h,hidden_by:h?me.id:null,hidden_at:h?new Date().toISOString():null}).eq('id',cur).select().single();
+  if(error){$('pErr').textContent=/hidden/.test(error.message)?'Скрытие ещё не включено: администратору нужно один раз выполнить SQL-скрипт update_hidden.sql в Supabase.':'Не сохранилось: '+error.message;return;}
+  Object.assign(p,data);await sb.from('place_comments').insert({place_id:p.id,author:me.id,body:h?'Скрыл(а) точку с карты.':'Вернул(а) точку на карту.'});
+  if(h&&!$('fHidden').checked){$('panel').hidden=true;cur=null;}
+  refreshMarker(p);if(cur)openPlace(cur);};
 $('pCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('pCoords').textContent);$('pCopy').textContent='Скопировано';}catch{$('pCopy').textContent='Не скопировалось';}setTimeout(()=>$('pCopy').textContent='Копировать',1500);};
 $('pClose').onclick=()=>{$('panel').hidden=true;cur=null;render();};
 $('pForm').onsubmit=async e=>{e.preventDefault();const p=places.find(x=>x.id===cur);
