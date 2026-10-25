@@ -9,12 +9,12 @@
 <style>
 :root{
   --bg:#f3f5f1; --panel:#fff; --fg:#1d2a22; --muted:#5d6b62; --line:#d9e0d8; --sel:#e9f3ec; --accent:#2f7d4f; --danger:#b3261e; --sel-ring:#e8590c;
-  --leskhoz:#2f7d4f; --gplho:#b5651d; --wood:#6a4fb3; --saw:#c0392b; --furn:#8e6bbf; --lesn:#8fbf9a; --site:#4f9d6c; --cand:#e0a800; --lumber:#0f7c8c; --log:#7a5230;
+  --leskhoz:#2f7d4f; --gplho:#b5651d; --wood:#6a4fb3; --saw:#c0392b; --furn:#8e6bbf; --lesn:#8fbf9a; --site:#4f9d6c; --cand:#e0a800; --lumber:#0f7c8c; --log:#7a5230; --refused:#ff0000;
   --f-display:"Fraunces",Georgia,serif; --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root{
   --bg:#121814; --panel:#18211b; --fg:#e3eae4; --muted:#9aa89e; --line:#2a362d; --sel:#1f3326; --accent:#5cc185; --danger:#ff8a80; --sel-ring:#ffa94d;
-  --leskhoz:#5cc185; --gplho:#e39a52; --wood:#a891f0; --saw:#ff7a66; --furn:#c7b1ef; --lesn:#4c7a58; --site:#7fd3a0; --cand:#ffd24d; --lumber:#4fc3d1; --log:#c79a6b; color-scheme:dark}}
+  --leskhoz:#5cc185; --gplho:#e39a52; --wood:#a891f0; --saw:#ff7a66; --furn:#c7b1ef; --lesn:#4c7a58; --site:#7fd3a0; --cand:#ffd24d; --lumber:#4fc3d1; --log:#c79a6b; --refused:#ff2a2a; color-scheme:dark}}
 [hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:14px/1.4 var(--f-body)}
@@ -44,7 +44,7 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
 .pill{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
 .pill.client{border-color:var(--accent);color:var(--accent)}
-.pill.refused{border-color:var(--danger);color:var(--danger);font-weight:600}
+.pill.refused{border-color:var(--refused);color:var(--refused);font-weight:600}
 .refnote{border:1px solid var(--danger);color:var(--danger);border-radius:6px;padding:6px 8px;font-size:13px}
 #list li.hid{opacity:.6}
 .chk{display:flex;align-items:center;gap:6px;cursor:pointer}
@@ -181,7 +181,7 @@ async function loadAll(){
   render();
 }
 function mStyle(p){const t=TYPES[p.type]||TYPES.wood_osm,on=p.id===cur;
-  if(p.status==='refused'&&!on&&!p.hidden)return{radius:t[2]+1,weight:3,color:css('--danger'),fillColor:css('--muted'),fillOpacity:.6};
+  if(p.status==='refused'&&!on&&!p.hidden)return{radius:t[2]+1,weight:4,color:css('--refused'),fillColor:css('--muted'),fillOpacity:.6};
   if(p.hidden&&!on)return{radius:t[2],weight:1.5,color:css('--muted'),dashArray:'3 3',fillColor:css(t[1]),fillOpacity:.35};
   return on?{radius:t[2]+6,weight:4,color:css('--sel-ring'),fillColor:css(t[1]),fillOpacity:1}:{radius:t[2],weight:p.status==='client'?3:1.5,color:p.status==='client'?css('--fg'):css('--panel'),fillColor:css(t[1]),fillOpacity:1};}
 // точки с одинаковыми координатами раскладываем по маленькому кругу, чтобы каждую можно было выбрать
