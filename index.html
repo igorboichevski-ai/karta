@@ -9,12 +9,12 @@
 <style>
 :root{
   --bg:#f3f5f1; --panel:#fff; --fg:#1d2a22; --muted:#5d6b62; --line:#d9e0d8; --sel:#e9f3ec; --accent:#2f7d4f; --danger:#b3261e; --sel-ring:#e8590c;
-  --leskhoz:#2f7d4f; --gplho:#b5651d; --wood:#6a4fb3; --saw:#c0392b; --furn:#8e6bbf; --lesn:#8fbf9a; --site:#4f9d6c; --cand:#e0a800;
+  --leskhoz:#2f7d4f; --gplho:#b5651d; --wood:#6a4fb3; --saw:#c0392b; --furn:#8e6bbf; --lesn:#8fbf9a; --site:#4f9d6c; --cand:#e0a800; --lumber:#0f7c8c; --log:#7a5230;
   --f-display:"Fraunces",Georgia,serif; --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root{
   --bg:#121814; --panel:#18211b; --fg:#e3eae4; --muted:#9aa89e; --line:#2a362d; --sel:#1f3326; --accent:#5cc185; --danger:#ff8a80; --sel-ring:#ffa94d;
-  --leskhoz:#5cc185; --gplho:#e39a52; --wood:#a891f0; --saw:#ff7a66; --furn:#c7b1ef; --lesn:#4c7a58; --site:#7fd3a0; --cand:#ffd24d; color-scheme:dark}}
+  --leskhoz:#5cc185; --gplho:#e39a52; --wood:#a891f0; --saw:#ff7a66; --furn:#c7b1ef; --lesn:#4c7a58; --site:#7fd3a0; --cand:#ffd24d; --lumber:#4fc3d1; --log:#c79a6b; color-scheme:dark}}
 [hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:14px/1.4 var(--f-body)}
@@ -125,7 +125,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script>
-const TYPES={leskhoz:['Лесхоз','--leskhoz',6.5],gplho:['Объединение (ГПЛХО)','--gplho',8],sawmill:['Пилорама','--saw',5.5],wood:['Деревообработка (крупная)','--wood',6.5],wood_osm:['Деревообработка','--wood',5],furniture:['Мебельное производство','--furn',5],leskhoz_site:['Объект лесхоза','--site',4],candidate:['Кандидат со спутника','--cand',6]};
+const TYPES={leskhoz:['Лесхоз','--leskhoz',6.5],gplho:['Объединение (ГПЛХО)','--gplho',8],sawmill:['Пилорама','--saw',5.5],wood:['Деревообработка (крупная)','--wood',6.5],wood_osm:['Деревообработка','--wood',5],furniture:['Мебельное производство','--furn',5],lumber:['Пиломатериалы (продажа)','--lumber',5],logging:['Лесозаготовка','--log',5.5],leskhoz_site:['Объект лесхоза','--site',4],candidate:['Кандидат со спутника','--cand',6]};
 const STATUSES={new:'Новый',to_check:'Проверить',contacted:'Связались',negotiation:'Переговоры',client:'Клиент',refused:'Отказ',closed:'Не работает'};
 const REGIONS=['Брестская область','Витебская область','Гомельская область','Гродненская область','Минская область','Могилевская область','г. Минск'];
 const $=id=>document.getElementById(id);
