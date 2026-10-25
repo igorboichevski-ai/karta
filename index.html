@@ -84,7 +84,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
       <div class="row"><select id="fType"></select><select id="fRegion"><option value="">Все области</option></select></div>
       <div class="row"><select id="fStatus"></select><select id="fOwner"><option value="">Все ответственные</option><option value="me">Мои</option><option value="none">Без ответственного</option></select></div>
       <div class="row"><button class="primary" id="addBtn" type="button">+ Добавить точку</button><button id="reload" type="button">Обновить</button><button id="logout" type="button">Выйти</button></div>
-      <label class="chk k"><input type="checkbox" id="fHidden"> Показать скрытые точки</label>
+      <label class="chk k"><input type="checkbox" id="fHidden"> Показать только скрытые точки</label>
       <div class="k" id="cnt"></div>
     </div>
     <ul id="list"></ul>
@@ -195,7 +195,7 @@ function highlight(){
 }
 function visible(p){
   const q=$('q').value.trim().toLowerCase(),t=$('fType').value,r=$('fRegion').value,s=$('fStatus').value,o=$('fOwner').value;
-  return (!q||[p.name,p.address,p.phone,p.notes].join(' ').toLowerCase().includes(q))&&(!t||p.type===t)&&(!r||p.region===r)&&(!s||p.status===s)&&(!o||(o==='me'?p.owner===me.id:o==='none'?!p.owner:true))&&(!p.hidden||$('fHidden').checked);
+  return (!q||[p.name,p.address,p.phone,p.notes].join(' ').toLowerCase().includes(q))&&(!t||p.type===t)&&(!r||p.region===r)&&(!s||p.status===s)&&(!o||(o==='me'?p.owner===me.id:o==='none'?!p.owner:true))&&(!!p.hidden===$('fHidden').checked);
 }
 function render(){
   const list=$('list');list.innerHTML='';let n=0;const frag=document.createDocumentFragment();
@@ -233,12 +233,12 @@ function showHidden(p){
   $('pHide').textContent=p.hidden?'Вернуть на карту':'Скрыть с карты';$('pHidNote').hidden=!p.hidden;
   if(p.hidden){const a=profiles.find(x=>x.id===p.hidden_by);$('pHidNote').textContent='Точка скрыта с карты'+(a?' · '+(a.full_name||'—'):'')+(p.hidden_at?' · '+new Date(p.hidden_at).toLocaleString('ru-RU'):'');}
 }
-// скрытая точка пропадает с карты и из списка; увидеть её можно галочкой «Показать скрытые точки»
+// скрытая точка пропадает с карты и из списка; увидеть её можно галочкой «Показать только скрытые точки»
 $('pHide').onclick=async()=>{const p=places.find(x=>x.id===cur);if(!p)return;const h=!p.hidden;
   const{data,error}=await sb.from('places').update({hidden:h,hidden_by:h?me.id:null,hidden_at:h?new Date().toISOString():null}).eq('id',cur).select().single();
   if(error){$('pErr').textContent=/hidden/.test(error.message)?'Скрытие ещё не включено: администратору нужно один раз выполнить SQL-скрипт update_hidden.sql в Supabase.':'Не сохранилось: '+error.message;return;}
   Object.assign(p,data);await sb.from('place_comments').insert({place_id:p.id,author:me.id,body:h?'Скрыл(а) точку с карты.':'Вернул(а) точку на карту.'});
-  if(h&&!$('fHidden').checked){$('panel').hidden=true;cur=null;}
+  if(h!==$('fHidden').checked){$('panel').hidden=true;cur=null;}
   refreshMarker(p);if(cur)openPlace(cur);};
 $('pCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('pCoords').textContent);$('pCopy').textContent='Скопировано';}catch{$('pCopy').textContent='Не скопировалось';}setTimeout(()=>$('pCopy').textContent='Копировать',1500);};
 $('pClose').onclick=()=>{$('panel').hidden=true;cur=null;render();};
