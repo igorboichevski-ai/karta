@@ -44,6 +44,8 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
 .pill{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
 .pill.client{border-color:var(--accent);color:var(--accent)}
+.pill.refused{border-color:var(--danger);color:var(--danger);font-weight:600}
+.refnote{border:1px solid var(--danger);color:var(--danger);border-radius:6px;padding:6px 8px;font-size:13px}
 #list li.hid{opacity:.6}
 .chk{display:flex;align-items:center;gap:6px;cursor:pointer}
 .chk input{width:auto;margin:0}
@@ -102,6 +104,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
           <label>Тип<select id="e_type"></select></label>
           <label>Статус<select id="e_status"></select></label>
         </div>
+        <label id="reasonBox" hidden>Причина отказа (увидят все)<input id="e_reason" placeholder="Например: работают только с постоянным поставщиком"></label>
         <label>Ответственный<select id="e_owner"><option value="">—</option></select></label>
         <label>Адрес<input id="e_address"></label>
         <div class="grid2">
@@ -114,6 +117,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
         </div>
         <label>Область<select id="e_region"></select></label>
         <label>Описание<textarea id="e_notes"></textarea></label>
+        <div class="refnote" id="pRefNote" hidden></div>
         <div class="hidnote" id="pHidNote" hidden></div>
         <div class="k" id="pMeta"></div>
         <div class="row" style="flex-wrap:wrap"><button class="primary" type="submit">Сохранить</button><button type="button" id="pMove">Переместить точку</button><button type="button" id="pHide">Скрыть с карты</button><button type="button" class="danger" id="pDelete" hidden>Удалить</button></div>
@@ -177,6 +181,7 @@ async function loadAll(){
   render();
 }
 function mStyle(p){const t=TYPES[p.type]||TYPES.wood_osm,on=p.id===cur;
+  if(p.status==='refused'&&!on&&!p.hidden)return{radius:t[2]+1,weight:3,color:css('--danger'),fillColor:css('--muted'),fillOpacity:.6};
   if(p.hidden&&!on)return{radius:t[2],weight:1.5,color:css('--muted'),dashArray:'3 3',fillColor:css(t[1]),fillOpacity:.35};
   return on?{radius:t[2]+6,weight:4,color:css('--sel-ring'),fillColor:css(t[1]),fillOpacity:1}:{radius:t[2],weight:p.status==='client'?3:1.5,color:p.status==='client'?css('--fg'):css('--panel'),fillColor:css(t[1]),fillOpacity:1};}
 // точки с одинаковыми координатами раскладываем по маленькому кругу, чтобы каждую можно было выбрать
@@ -184,7 +189,7 @@ let offs=new Map();
 function spread(){offs=new Map();const g=new Map();places.forEach(p=>{if(p.lat==null)return;const k=(+p.lat).toFixed(5)+','+(+p.lon).toFixed(5);g.has(k)?g.get(k).push(p):g.set(k,[p]);});
   g.forEach(a=>{if(a.length<2)return;a.forEach((p,i)=>{const r=0.00025,f=2*Math.PI*i/a.length;offs.set(p.id,[r*Math.sin(f),r*Math.cos(f)/Math.cos(p.lat*Math.PI/180)]);});});}
 function pos(p){const o=offs.get(p.id)||[0,0];return[+p.lat+o[0],+p.lon+o[1]];}
-function mkMarker(p){return L.circleMarker(pos(p),mStyle(p)).bindTooltip(p.name).on('click',()=>openPlace(p.id));}
+function mkMarker(p){return L.circleMarker(pos(p),mStyle(p)).bindTooltip(p.status==='refused'?p.name+' · отказ':p.name).on('click',()=>openPlace(p.id));}
 let halo=null;
 function highlight(){
   markers.forEach((m,id)=>{const p=places.find(x=>x.id===id);if(p)m.setStyle(mStyle(p));});
@@ -216,7 +221,8 @@ async function openPlace(id,fly){
   cur=id;const p=places.find(x=>x.id===id);if(!p)return;
   $('panel').hidden=false;$('pTitle').textContent=p.name;$('pType').textContent=(TYPES[p.type]||[p.type])[0];
   for(const f of['name','type','status','address','phone','email','website','unp','region','notes'])$('e_'+f).value=p[f]??'';
-  $('e_owner').value=p.owner||'';
+  $('e_owner').value=p.owner||'';$('e_reason').value='';$('reasonBox').hidden=true;
+  $('pRefNote').hidden=p.status!=='refused';$('pRefNote').textContent='Отказ: с нами не работает, время на эту точку не тратить.';
   $('pMeta').textContent=`Источник: ${p.source||'добавлено вручную'} · изменено ${new Date(p.updated_at).toLocaleString('ru-RU')}`;
   $('pDelete').hidden=!(profiles.find(x=>x.id===me.id)?.role==='admin');$('pErr').textContent='';
   showCoords(p);showHidden(p);
@@ -242,11 +248,16 @@ $('pHide').onclick=async()=>{const p=places.find(x=>x.id===cur);if(!p)return;con
   refreshMarker(p);if(cur)openPlace(cur);};
 $('pCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('pCoords').textContent);$('pCopy').textContent='Скопировано';}catch{$('pCopy').textContent='Не скопировалось';}setTimeout(()=>$('pCopy').textContent='Копировать',1500);};
 $('pClose').onclick=()=>{$('panel').hidden=true;cur=null;render();};
+// при выборе «Отказ» просим причину, она сохраняется комментарием и видна всем в карточке
+$('e_status').addEventListener('change',()=>{const p=places.find(x=>x.id===cur);$('reasonBox').hidden=!($('e_status').value==='refused'&&p?.status!=='refused');});
 $('pForm').onsubmit=async e=>{e.preventDefault();const p=places.find(x=>x.id===cur);
+  const reason=$('e_reason').value.trim(),toRefused=$('e_status').value==='refused'&&p.status!=='refused';
+  if(toRefused&&!reason){$('pErr').textContent='Напишите причину отказа, чтобы коллеги её видели.';$('e_reason').focus();return;}
   const patch={};for(const f of['name','type','status','address','phone','email','website','unp','region','notes'])patch[f]=$('e_'+f).value.trim()||null;
   patch.name=patch.name||p.name;patch.type=patch.type||p.type;patch.status=patch.status||'new';patch.owner=$('e_owner').value||null;
   const{data,error}=await sb.from('places').update(patch).eq('id',cur).select().single();
   if(error){$('pErr').textContent='Не сохранилось: '+error.message;return;}
+  if(toRefused)await sb.from('place_comments').insert({place_id:p.id,author:me.id,body:'Отказ: '+reason});
   Object.assign(p,data);refreshMarker(p);openPlace(p.id);$('pErr').textContent='Сохранено';};
 function refreshMarker(p){offs.delete(p.id);markers.get(p.id)?.remove();if(p.lat!=null)markers.set(p.id,mkMarker(p));render();}
 $('pDelete').onclick=async()=>{if($('pDelete').dataset.confirm!=='1'){$('pDelete').dataset.confirm='1';$('pDelete').textContent='Точно удалить?';return;}
@@ -257,6 +268,8 @@ $('pDelete').onclick=async()=>{if($('pDelete').dataset.confirm!=='1'){$('pDelete
 async function loadComments(id){
   const{data,error}=await sb.from('place_comments').select('*').eq('place_id',id).order('created_at',{ascending:false});
   const box=$('comments');box.innerHTML='';if(error){box.textContent=error.message;return;}
+  const p=places.find(x=>x.id===id),why=data.find(c=>c.body.startsWith('Отказ:'));
+  if(p?.status==='refused'&&why&&id===cur){const a=profiles.find(x=>x.id===why.author);$('pRefNote').textContent=`Отказ: ${why.body.slice(6).trim()} (${a?.full_name||'—'}, ${new Date(why.created_at).toLocaleDateString('ru-RU')}). Время на эту точку не тратить.`;}
   if(!data.length){box.innerHTML='<span class="k">Пока нет комментариев.</span>';return;}
   data.forEach(c=>{const d=document.createElement('div');d.className='comment';const a=profiles.find(x=>x.id===c.author);
     d.innerHTML='<div class="k"></div><div></div>';d.children[0].textContent=(a?.full_name||'—')+' · '+new Date(c.created_at).toLocaleString('ru-RU');d.children[1].textContent=c.body;box.appendChild(d);});
