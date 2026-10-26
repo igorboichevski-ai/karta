@@ -174,6 +174,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
       <label>По<input type="date" id="rTo"></label>
       <button class="primary" id="rShow" type="button">Показать</button>
       <button id="rXlsx" type="button">Скачать Excel</button>
+      <button id="rBitrix" type="button">Для Битрикс24 (CSV)</button>
     </div>
     <div class="k" id="rSum"></div>
     <div class="rtable"><table id="rTable"></table></div>
@@ -434,7 +435,7 @@ async function loadVisits(id){const box=$('visits');box.innerHTML='';
 }
 
 // ---- отчёт: визиты и комментарии за период, выгрузка в Excel для переноса в CRM ----
-let rRows=[],rComments=[];
+let rRows=[],rComments=[],rVisits=[];
 $('reportBtn').onclick=()=>{const u=$('rUser');u.innerHTML='';u.add(new Option('Все менеджеры',''));profiles.forEach(p=>u.add(new Option(p.full_name||p.id,p.id)));
   if(!$('rFrom').value){const t=new Date();$('rTo').value=dstr(t);t.setDate(t.getDate()-13);$('rFrom').value=dstr(t);}
   $('report').hidden=false;showReport();};
@@ -449,7 +450,7 @@ async function showReport(){
   if(u){qv=qv.eq('author',u);qc=qc.eq('author',u);}
   const[{data:vs,error:e1},{data:cs}]=await Promise.all([qv,qc]);
   if(e1){$('rSum').textContent=/visits/.test(e1.message)?'Визиты ещё не включены: администратору нужно один раз выполнить SQL-скрипт update_visits.sql в Supabase.':'Ошибка: '+e1.message;return;}
-  const P=id=>places.find(x=>x.id===id)||{};
+  const P=id=>places.find(x=>x.id===id)||{};rVisits=vs;
   rRows=vs.map(v=>{const p=P(v.place_id);return{'Дата визита':new Date(v.visited_at).toLocaleString('ru-RU'),'Менеджер':pname(v.author),'Компания':p.name||'',
     'Тип':(TYPES[p.type]||[p.type||''])[0],'Область':p.region||'','Адрес':p.address||'','УНП':p.unp||'','Телефон компании':p.phone||'','Email':p.email||'','Сайт':p.website||'',
     'Контактное лицо':v.contact_name||'','Телефон контакта':v.contact_phone||'','Результат':RESULTS[v.result]||v.result,'Статус точки сейчас':STATUSES[p.status]||p.status||'',
@@ -469,6 +470,23 @@ $('rXlsx').onclick=async()=>{if(!rRows.length&&!rComments.length){$('rSum').text
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(clean.length?clean:[{'Визитов нет':''}]),'Визиты');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rComments.length?rComments:[{'Комментариев нет':''}]),'Комментарии');
   const u=$('rUser').value?' '+pname($('rUser').value):'';XLSX.writeFile(wb,`Визиты${u} ${$('rFrom').value} — ${$('rTo').value}.xlsx`);};
+
+// Битрикс24 принимает в CRM только CSV; на шаге сопоставления полей колонки можно переназначить.
+// Одна строка на компанию: все визиты за период собраны в комментарий лида.
+$('rBitrix').onclick=()=>{if(!rVisits.length){$('rSum').textContent='За выбранный период визитов нет, выгружать нечего.';return;}
+  const by=new Map();rVisits.forEach(v=>{by.has(v.place_id)?by.get(v.place_id).push(v):by.set(v.place_id,[v]);});
+  const rows=[...by].map(([id,vs])=>{const p=places.find(x=>x.id===id)||{},last=vs[vs.length-1],c=[...vs].reverse().find(v=>v.contact_name||v.contact_phone)||{};
+    const com=vs.map(v=>[new Date(v.visited_at).toLocaleDateString('ru-RU')+', '+pname(v.author)+': '+(RESULTS[v.result]||v.result),
+      v.contact_name&&('Контакт: '+v.contact_name+(v.contact_phone?', '+v.contact_phone:'')),v.products&&('Интересует: '+v.products),v.volume&&('Объём: '+v.volume),
+      v.next_step&&('Следующий шаг: '+v.next_step+(v.next_date?' до '+new Date(v.next_date).toLocaleDateString('ru-RU'):'')),v.notes].filter(Boolean).join('. ')).join('\n');
+    const extra=[p.unp&&('УНП: '+p.unp),c.contact_phone&&p.phone&&c.contact_phone!==p.phone&&('Телефон компании: '+p.phone),p.lat!=null&&(`Координаты: ${(+p.lat).toFixed(6)}, ${(+p.lon).toFixed(6)}`),'Карта: точка №'+id].filter(Boolean).join('\n');
+    return{'Название лида':`${p.name||'Компания'}: ${RESULTS[last.result]||last.result}`,'Название компании':p.name||'','Имя':c.contact_name||'','Рабочий телефон':c.contact_phone||p.phone||'',
+      'Рабочий e-mail':p.email||'','Корпоративный сайт':p.website||'','Адрес':[p.address,p.region].filter(Boolean).join(', '),'Ответственный':pname(last.author),'Комментарий':com+'\n'+extra};});
+  const cols=Object.keys(rows[0]),q=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
+  const csv='﻿'+[cols.map(q).join(',')].concat(rows.map(r=>cols.map(c=>q(r[c])).join(','))).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`Битрикс24 лиды ${$('rFrom').value} — ${$('rTo').value}.csv`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  $('rSum').textContent=`Выгружено лидов: ${rows.length} (по одному на компанию, все визиты в комментарии).`;};
 
 boot();
 </script>
