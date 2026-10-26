@@ -5,8 +5,8 @@
 ## Как устроено
 - `index.html` — весь сайт (Leaflet + Supabase JS). Слои «Схема» (OpenStreetMap) и «Спутник» (Esri).
 - `config.js` — адрес проекта Supabase и публичный ключ `anon`.
-- `supabase/setup.sql` — схема базы, права доступа и начальные данные. Запускается один раз в Supabase → SQL Editor.
-- `data/` — исходные таблицы (CSV).
+- `supabase/setup.sql` — схема базы и права доступа. Запускается один раз в Supabase → SQL Editor.
+- Списки компаний в репозитории не хранятся: они только в базе (доступ после входа).
 
 ## Запуск
 1. В Supabase выполнить `supabase/setup.sql`.
