@@ -67,6 +67,22 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .coords{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 a.btn{display:inline-block;text-decoration:none;color:inherit;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:7px 12px}
 a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.visit{border:1px solid var(--accent);border-radius:8px;padding:10px;display:grid;gap:8px}
+.vitem{border-left:3px solid var(--accent);padding:2px 0 2px 8px}
+.vitem.queued{border-left-color:var(--cand)}
+#report{position:fixed;inset:0;z-index:2000;background:rgb(0 0 0/.4);display:grid;place-items:center;padding:16px;box-sizing:border-box}
+.rbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(1200px,100%);height:100%;max-height:900px;display:flex;flex-direction:column;min-height:0}
+.rbox .ph{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:center}
+.rctl{display:flex;flex-wrap:wrap;gap:8px;align-items:end;padding:12px 16px}
+.rctl label{display:grid;gap:3px;font-size:12px;color:var(--muted)}
+.rctl input,.rctl select{width:auto}
+#rSum{padding:0 16px 8px}
+.rtable{overflow:auto;padding:0 16px 16px;flex:1;min-height:0}
+.rtable table{border-collapse:collapse;font-size:13px;min-width:100%}
+.rtable th,.rtable td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.rtable th{position:sticky;top:0;background:var(--panel);font-weight:600;white-space:nowrap}
+.rtable td.c{cursor:pointer;color:var(--accent)}
+@media (max-width:760px){#report{padding:0}.rbox{border-radius:0;max-height:none}}
 @media (max-width:760px){#app{grid-template-columns:1fr;grid-template-rows:42vh 1fr}aside{border-right:0;border-bottom:1px solid var(--line)}#panel{top:auto;height:70%}}
 </style>
 </head>
@@ -89,7 +105,8 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
       <input id="q" type="search" placeholder="Поиск: название, город, телефон">
       <div class="row"><select id="fType"></select><select id="fRegion"><option value="">Все области</option></select></div>
       <div class="row"><select id="fStatus"></select><select id="fOwner"><option value="">Все ответственные</option><option value="me">Мои</option><option value="none">Без ответственного</option></select></div>
-      <div class="row"><button class="primary" id="addBtn" type="button">+ Добавить точку</button><button id="reload" type="button">Обновить</button><button id="logout" type="button">Выйти</button></div>
+      <div class="row" style="flex-wrap:wrap"><button class="primary" id="addBtn" type="button">+ Добавить точку</button><button id="reportBtn" type="button">Отчёт</button><button id="reload" type="button">Обновить</button><button id="logout" type="button">Выйти</button></div>
+      <div class="k" id="vQueue" hidden></div>
       <label class="chk k"><input type="checkbox" id="fHidden"> Показать только скрытые точки</label>
       <div class="k" id="cnt"></div>
     </div>
@@ -126,6 +143,19 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
         <div class="k" id="pMeta"></div>
         <div class="row" style="flex-wrap:wrap"><button class="primary" type="submit">Сохранить</button><button type="button" id="pMove">Переместить точку</button><button type="button" id="pHide">Скрыть с карты</button><button type="button" class="danger" id="pDelete" hidden>Удалить</button></div>
         <div class="err" id="pErr"></div>
+        <button type="button" class="primary" id="pVisit">Отметить визит</button>
+        <div class="visit" id="visitForm" hidden>
+          <h2 style="font-size:15px">Визит</h2>
+          <div class="grid2"><label>Когда<input type="datetime-local" id="v_at"></label><label>Результат<select id="v_result"></select></label></div>
+          <div class="grid2"><label>С кем говорили<input id="v_contact" placeholder="ФИО, должность"></label><label>Телефон контакта<input id="v_phone" type="tel"></label></div>
+          <div class="grid2"><label>Что покупают, что интересует<input id="v_products"></label><label>Объём<input id="v_volume" placeholder="например, 20 м³ в месяц"></label></div>
+          <div class="grid2"><label>Следующий шаг<input id="v_next" placeholder="например, отправить КП"></label><label>Когда<input type="date" id="v_next_date"></label></div>
+          <label>Заметки<textarea id="v_notes" placeholder="Всё, что важно для CRM"></textarea></label>
+          <div class="row"><button type="button" class="primary" id="v_save">Сохранить визит</button><button type="button" id="v_cancel">Отмена</button></div>
+          <div class="err" id="v_err"></div>
+        </div>
+        <h2 style="font-size:15px;margin-top:6px">Визиты</h2>
+        <div id="visits" style="display:grid;gap:8px"></div>
         <h2 style="font-size:15px;margin-top:6px">Комментарии</h2>
         <div id="comments" style="display:grid;gap:8px"></div>
         <textarea id="newComment" placeholder="Например: позвонили, перезвонить в понедельник"></textarea>
@@ -135,12 +165,30 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   </div>
 </div>
 
+<div id="report" hidden>
+  <div class="rbox">
+    <div class="ph"><h2 style="font-size:18px">Отчёт по визитам</h2><button id="rClose" type="button" aria-label="Закрыть">✕</button></div>
+    <div class="rctl">
+      <label>Менеджер<select id="rUser"></select></label>
+      <label>С<input type="date" id="rFrom"></label>
+      <label>По<input type="date" id="rTo"></label>
+      <button class="primary" id="rShow" type="button">Показать</button>
+      <button id="rXlsx" type="button">Скачать Excel</button>
+    </div>
+    <div class="k" id="rSum"></div>
+    <div class="rtable"><table id="rTable"></table></div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script>
 const TYPES={leskhoz:['Лесхоз','--leskhoz',6.5],gplho:['Объединение (ГПЛХО)','--gplho',8],sawmill:['Пилорама','--saw',5.5],wood:['Деревообработка (крупная)','--wood',6.5],wood_osm:['Деревообработка','--wood',5],furniture:['Мебельное производство','--furn',5],lumber:['Пиломатериалы (продажа)','--lumber',5],logging:['Лесозаготовка','--log',5.5],leskhoz_site:['Объект лесхоза','--site',4],candidate:['Кандидат со спутника','--cand',6]};
 const STATUSES={new:'Новый',to_check:'Проверить',contacted:'Связались',negotiation:'Переговоры',client:'Клиент',refused:'Отказ',closed:'Не работает'};
+const RESULTS={interest:'Интерес, ждут предложение',order:'Договорились о заказе',think:'Думают',no_need:'Пока не нужно',refused:'Отказ',not_found:'Не застал, закрыто'};
+// какой статус получает точка после визита (null: не меняем)
+const RES_STATUS={interest:'negotiation',order:'client',think:'negotiation',no_need:'contacted',refused:'refused',not_found:null};
 const REGIONS=['Брестская область','Витебская область','Гомельская область','Гродненская область','Минская область','Могилевская область','г. Минск'];
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -148,7 +196,7 @@ const sb=supabase.createClient(KARTA_CONFIG.supabaseUrl,KARTA_CONFIG.supabaseAno
 let me=null,profiles=[],places=[],markers=new Map(),cur=null,mode=null,map=null;
 
 function opts(sel,obj,first){sel.innerHTML=first?`<option value="">${first}</option>`:'';for(const[k,v]of Object.entries(obj))sel.add(new Option(Array.isArray(v)?v[0]:v,k));}
-opts($('fType'),TYPES,'Все типы');opts($('fStatus'),STATUSES,'Все статусы');opts($('e_type'),TYPES);opts($('e_status'),STATUSES);
+opts($('v_result'),RESULTS);opts($('fType'),TYPES,'Все типы');opts($('fStatus'),STATUSES,'Все статусы');opts($('e_type'),TYPES);opts($('e_status'),STATUSES);
 REGIONS.forEach(r=>{$('fRegion').add(new Option(r,r));});$('e_region').add(new Option('—',''));REGIONS.forEach(r=>$('e_region').add(new Option(r,r)));
 
 async function boot(){
@@ -158,6 +206,7 @@ async function boot(){
   me=session.user;
   if(!map) initMap();
   await loadAll();
+  flushVisits();
 }
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginErr').textContent='';
   const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
@@ -265,7 +314,8 @@ async function openPlace(id,fly){
   $('pDelete').hidden=!(profiles.find(x=>x.id===me.id)?.role==='admin');$('pErr').textContent='';
   showCoords(p);showHidden(p);
   if(fly&&p.lat!=null){map.setView(pos(p),Math.max(map.getZoom(),15),{animate:false});if(innerWidth>760)map.panBy([$('panel').offsetWidth/2,0],{animate:false});}
-  render();loadComments(id);
+  $('visitForm').hidden=true;$('pVisit').hidden=false;
+  render();loadComments(id);loadVisits(id);
 }
 function showCoords(p){
   const ok=p.lat!=null,c=ok?`${(+p.lat).toFixed(6)}, ${(+p.lon).toFixed(6)}`:'нет, поставьте точку кнопкой «Переместить точку»';
@@ -325,6 +375,100 @@ async function createAt(ll){mode=null;$('addHint').hidden=true;
 async function moveTo(ll){mode=null;$('addHint').hidden=true;const p=places.find(x=>x.id===cur);
   const{data,error}=await sb.from('places').update({lat:ll.lat,lon:ll.lng}).eq('id',cur).select().single();
   if(error){$('pErr').textContent=error.message;return;}Object.assign(p,data);refreshMarker(p);showCoords(p);}
+
+// ---- визиты: менеджер на месте заполняет короткую форму; без интернета визит ждёт в телефоне и уходит позже ----
+const VQ='karta_visit_queue';
+function vqGet(){try{return JSON.parse(localStorage.getItem(VQ)||'[]');}catch{return[];}}
+function vqSet(a){try{localStorage.setItem(VQ,JSON.stringify(a));}catch{}}
+function localInput(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+function dstr(d){return localInput(d).slice(0,10);}
+let vPos=null;
+$('pVisit').onclick=()=>{const p=places.find(x=>x.id===cur);if(!p)return;
+  for(const f of['contact','phone','products','volume','next','next_date','notes'])$('v_'+f).value='';
+  $('v_at').value=localInput(new Date());$('v_result').value='interest';$('v_phone').value=p.phone||'';$('v_err').textContent='';
+  $('visitForm').hidden=false;$('pVisit').hidden=true;$('v_contact').focus();
+  vPos=geoDot?geoDot.getLatLng():null;
+  if(!vPos&&navigator.geolocation)navigator.geolocation.getCurrentPosition(ps=>{vPos={lat:ps.coords.latitude,lng:ps.coords.longitude};},()=>{},{maximumAge:120000,timeout:15000});};
+$('v_cancel').onclick=()=>{$('visitForm').hidden=true;$('pVisit').hidden=false;};
+$('v_save').onclick=async()=>{const p=places.find(x=>x.id===cur);if(!p)return;
+  const v=f=>$('v_'+f).value.trim()||null,res=$('v_result').value;
+  if(res==='refused'&&!v('notes')){$('v_err').textContent='Напишите в заметках причину отказа, её увидят все.';$('v_notes').focus();return;}
+  const row={place_id:p.id,author:me.id,visited_at:new Date($('v_at').value||Date.now()).toISOString(),result:res,contact_name:v('contact'),contact_phone:v('phone'),
+    products:v('products'),volume:v('volume'),next_step:v('next'),next_date:v('next_date'),notes:v('notes'),lat:vPos?.lat??null,lon:vPos?.lng??null};
+  $('v_save').disabled=true;const r=await sendVisit(row);$('v_save').disabled=false;
+  if(r==='error')return;
+  if(r==='queued'){const q=vqGet();q.push(row);vqSet(q);updQueue();}
+  $('visitForm').hidden=true;$('pVisit').hidden=false;if(cur===p.id){openPlace(p.id);}};
+// 'ok' | 'queued' (нет связи) | 'error'
+async function sendVisit(row){
+  let error=null;try{({error}=await sb.from('visits').insert(row));}catch(e){error={message:String(e)};}
+  if(error){
+    if(!navigator.onLine||/fetch|network|timeout|Load failed/i.test(error.message))return'queued';
+    $('v_err').textContent=/visits/.test(error.message)&&/exist|schema/i.test(error.message)?'Визиты ещё не включены: администратору нужно один раз выполнить SQL-скрипт update_visits.sql в Supabase.':'Не сохранилось: '+error.message;return'error';}
+  await applyVisit(row);return'ok';
+}
+// после визита обновляем статус точки и ставим менеджера ответственным, если его не было
+async function applyVisit(row){const p=places.find(x=>x.id===row.place_id);if(!p)return;
+  let ns=RES_STATUS[row.result];if(p.status==='client'&&ns&&ns!=='refused')ns=null;
+  const patch={};if(ns&&ns!==p.status)patch.status=ns;if(!p.owner)patch.owner=row.author;
+  if(Object.keys(patch).length){const{data}=await sb.from('places').update(patch).eq('id',p.id).select().single();if(data){Object.assign(p,data);refreshMarker(p);}}
+  if(row.result==='refused')await sb.from('place_comments').insert({place_id:p.id,author:row.author,body:'Отказ: '+(row.notes||'')});
+}
+async function flushVisits(){if(!me)return;const q=vqGet();if(!q.length){updQueue();return;}const left=[];
+  for(const row of q){if(row.author!==me.id){left.push(row);continue;}const r=await sendVisit(row);if(r!=='ok')left.push(row);}
+  vqSet(left);updQueue();if(cur)loadVisits(cur);}
+function updQueue(){const n=vqGet().filter(r=>r.author===me?.id).length;$('vQueue').hidden=!n;$('vQueue').textContent=`Ждут отправки визитов: ${n}. Уйдут сами, когда появится интернет.`;}
+addEventListener('online',flushVisits);setInterval(()=>{if(navigator.onLine)flushVisits();},60000);
+async function loadVisits(id){const box=$('visits');box.innerHTML='';
+  const q=vqGet().filter(r=>r.place_id===id).map(r=>({...r,queued:true}));
+  const{data,error}=await sb.from('visits').select('*').eq('place_id',id).order('visited_at',{ascending:false});
+  const all=q.concat(error?[]:data);
+  if(!all.length){box.innerHTML=`<span class="k">${error&&!q.length?'Визиты ещё не включены (нужен скрипт update_visits.sql).':'Визитов пока не было.'}</span>`;return;}
+  all.forEach(v=>{const d=document.createElement('div');d.className='vitem'+(v.queued?' queued':'');const a=profiles.find(x=>x.id===v.author);
+    d.innerHTML='<div class="k"></div><div><b></b></div><div></div>';
+    d.children[0].textContent=(a?.full_name||'—')+' · '+new Date(v.visited_at).toLocaleString('ru-RU')+(v.queued?' · ждёт отправки':'');
+    d.children[1].firstChild.textContent=RESULTS[v.result]||v.result;
+    d.children[2].textContent=[v.contact_name&&('Контакт: '+v.contact_name+(v.contact_phone?', '+v.contact_phone:'')),v.products&&('Интересует: '+v.products),v.volume&&('Объём: '+v.volume),
+      v.next_step&&('Дальше: '+v.next_step+(v.next_date?' до '+new Date(v.next_date).toLocaleDateString('ru-RU'):'')),v.notes].filter(Boolean).join('\n');
+    d.children[2].style.whiteSpace='pre-line';box.appendChild(d);});
+}
+
+// ---- отчёт: визиты и комментарии за период, выгрузка в Excel для переноса в CRM ----
+let rRows=[],rComments=[];
+$('reportBtn').onclick=()=>{const u=$('rUser');u.innerHTML='';u.add(new Option('Все менеджеры',''));profiles.forEach(p=>u.add(new Option(p.full_name||p.id,p.id)));
+  if(!$('rFrom').value){const t=new Date();$('rTo').value=dstr(t);t.setDate(t.getDate()-13);$('rFrom').value=dstr(t);}
+  $('report').hidden=false;showReport();};
+$('rClose').onclick=()=>{$('report').hidden=true;};
+$('rShow').onclick=showReport;
+const pname=id=>profiles.find(x=>x.id===id)?.full_name||'—';
+async function showReport(){
+  const from=new Date($('rFrom').value+'T00:00'),to=new Date($('rTo').value+'T00:00');to.setDate(to.getDate()+1);const u=$('rUser').value;
+  $('rSum').textContent='Загружаю…';$('rTable').innerHTML='';
+  let qv=sb.from('visits').select('*').gte('visited_at',from.toISOString()).lt('visited_at',to.toISOString()).order('visited_at');
+  let qc=sb.from('place_comments').select('*').gte('created_at',from.toISOString()).lt('created_at',to.toISOString()).order('created_at');
+  if(u){qv=qv.eq('author',u);qc=qc.eq('author',u);}
+  const[{data:vs,error:e1},{data:cs}]=await Promise.all([qv,qc]);
+  if(e1){$('rSum').textContent=/visits/.test(e1.message)?'Визиты ещё не включены: администратору нужно один раз выполнить SQL-скрипт update_visits.sql в Supabase.':'Ошибка: '+e1.message;return;}
+  const P=id=>places.find(x=>x.id===id)||{};
+  rRows=vs.map(v=>{const p=P(v.place_id);return{'Дата визита':new Date(v.visited_at).toLocaleString('ru-RU'),'Менеджер':pname(v.author),'Компания':p.name||'',
+    'Тип':(TYPES[p.type]||[p.type||''])[0],'Область':p.region||'','Адрес':p.address||'','УНП':p.unp||'','Телефон компании':p.phone||'','Email':p.email||'','Сайт':p.website||'',
+    'Контактное лицо':v.contact_name||'','Телефон контакта':v.contact_phone||'','Результат':RESULTS[v.result]||v.result,'Статус точки сейчас':STATUSES[p.status]||p.status||'',
+    'Что интересует':v.products||'','Объём':v.volume||'','Следующий шаг':v.next_step||'','Срок следующего шага':v.next_date?new Date(v.next_date).toLocaleDateString('ru-RU'):'',
+    'Заметки':v.notes||'','Координаты точки':p.lat!=null?`${(+p.lat).toFixed(6)}, ${(+p.lon).toFixed(6)}`:'','id точки':v.place_id,_id:v.place_id};});
+  rComments=(cs||[]).map(c=>{const p=P(c.place_id);return{'Дата':new Date(c.created_at).toLocaleString('ru-RU'),'Менеджер':pname(c.author),'Компания':p.name||'','Область':p.region||'','Комментарий':c.body,'id точки':c.place_id};});
+  const byRes={};vs.forEach(v=>{const k=RESULTS[v.result]||v.result;byRes[k]=(byRes[k]||0)+1;});
+  $('rSum').textContent=`Визитов: ${vs.length}`+(vs.length?' ('+Object.entries(byRes).map(([k,n])=>k.toLowerCase()+': '+n).join(', ')+')':'')+`. Комментариев за период: ${rComments.length}.`+(vs.length?' Нажмите на компанию, чтобы открыть её на карте.':'');
+  const cols=['Дата визита','Менеджер','Компания','Область','Контактное лицо','Телефон контакта','Результат','Что интересует','Объём','Следующий шаг','Срок следующего шага','Заметки'];
+  const t=$('rTable');const hr=t.insertRow();cols.forEach(c=>{const th=document.createElement('th');th.textContent=c;hr.appendChild(th);});
+  rRows.forEach(r=>{const tr=t.insertRow();cols.forEach(c=>{const td=tr.insertCell();td.textContent=r[c];if(c==='Компания'){td.className='c';td.onclick=()=>{$('report').hidden=true;openPlace(r._id,true);};}});});
+}
+async function loadXLSX(){if(window.XLSX)return;await new Promise((ok,bad)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=ok;s.onerror=bad;document.head.appendChild(s);});}
+$('rXlsx').onclick=async()=>{if(!rRows.length&&!rComments.length){$('rSum').textContent='За выбранный период нечего выгружать.';return;}
+  try{await loadXLSX();}catch{$('rSum').textContent='Не загрузился модуль Excel, проверьте интернет.';return;}
+  const wb=XLSX.utils.book_new(),clean=rRows.map(({_id,...r})=>r);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(clean.length?clean:[{'Визитов нет':''}]),'Визиты');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rComments.length?rComments:[{'Комментариев нет':''}]),'Комментарии');
+  const u=$('rUser').value?' '+pname($('rUser').value):'';XLSX.writeFile(wb,`Визиты${u} ${$('rFrom').value} — ${$('rTo').value}.xlsx`);};
 
 boot();
 </script>
