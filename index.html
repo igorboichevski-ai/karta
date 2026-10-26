@@ -70,6 +70,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .visit{border:1px solid var(--accent);border-radius:8px;padding:10px;display:grid;gap:8px}
 .vitem{border-left:3px solid var(--accent);padding:2px 0 2px 8px}
 .vitem.queued{border-left-color:var(--cand)}
+.vitem .del{float:right;padding:2px 8px;font-size:12px}
 #report{position:fixed;inset:0;z-index:2000;background:rgb(0 0 0/.4);display:grid;place-items:center;padding:16px;box-sizing:border-box}
 .rbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(1200px,100%);height:100%;max-height:900px;display:flex;flex-direction:column;min-height:0}
 .rbox .ph{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:center}
@@ -431,7 +432,15 @@ async function loadVisits(id){const box=$('visits');box.innerHTML='';
     d.children[1].firstChild.textContent=RESULTS[v.result]||v.result;
     d.children[2].textContent=[v.contact_name&&('Контакт: '+v.contact_name+(v.contact_phone?', '+v.contact_phone:'')),v.products&&('Интересует: '+v.products),v.volume&&('Объём: '+v.volume),
       v.next_step&&('Дальше: '+v.next_step+(v.next_date?' до '+new Date(v.next_date).toLocaleDateString('ru-RU'):'')),v.notes].filter(Boolean).join('\n');
-    d.children[2].style.whiteSpace='pre-line';box.appendChild(d);});
+    d.children[2].style.whiteSpace='pre-line';
+    // удалить визит может его автор или админ; статус точки при этом не откатывается
+    if(v.author===me.id||profiles.find(x=>x.id===me.id)?.role==='admin'){const b=document.createElement('button');b.type='button';b.className='del danger';b.textContent='Удалить';
+      b.onclick=async()=>{if(b.dataset.confirm!=='1'){b.dataset.confirm='1';b.textContent='Точно удалить?';return;}
+        if(v.queued){vqSet(vqGet().filter(r=>!(r.place_id===v.place_id&&r.visited_at===v.visited_at&&r.author===v.author)));updQueue();}
+        else{const{error}=await sb.from('visits').delete().eq('id',v.id);if(error){b.textContent='Не удалилось';return;}}
+        loadVisits(id);};
+      d.prepend(b);}
+    box.appendChild(d);});
 }
 
 // ---- отчёт: визиты и комментарии за период, выгрузка в Excel для переноса в CRM ----
