@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Карта лесной отрасли</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#2f7d4f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Карта">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
@@ -85,7 +93,24 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .rtable th{position:sticky;top:0;background:var(--panel);font-weight:600;white-space:nowrap}
 .rtable td.c{cursor:pointer;color:var(--accent)}
 @media (max-width:760px){#report{padding:0}.rbox{border-radius:0;max-height:none}}
-@media (max-width:760px){#app{grid-template-columns:1fr;grid-template-rows:42vh 1fr}aside{border-right:0;border-bottom:1px solid var(--line)}#panel{top:auto;height:70%}}
+#mnav{display:none}
+/* телефон: карта на весь экран, список отдельной вкладкой, внизу переключатель */
+@media (max-width:760px){
+  input,select,textarea{font-size:16px}
+  #app{display:block;position:relative;height:100%}
+  .mapwrap,aside{position:absolute;left:0;right:0;top:0;bottom:calc(56px + env(safe-area-inset-bottom))}
+  aside{z-index:1500;border-right:0;overflow:auto;display:none}
+  #app.m-list aside{display:flex}
+  #list{overflow:visible;flex:none}
+  #list li{padding:11px 16px}
+  #addBtn{display:none}
+  #mnav{display:flex;position:absolute;left:0;right:0;bottom:0;height:56px;padding-bottom:env(safe-area-inset-bottom);background:var(--panel);border-top:1px solid var(--line);z-index:1600}
+  #mnav button{flex:1;border:0;border-radius:0;background:none;font-weight:500;color:var(--muted)}
+  #mnav button.on{color:var(--accent);box-shadow:inset 0 3px var(--accent)}
+  #mnav #mAdd{color:var(--accent)}
+  #panel{top:auto;left:0;right:0;bottom:0;width:auto;height:65%;border-radius:14px 14px 0 0;border-bottom:0}
+  #addHint{top:auto;bottom:12px;width:max-content;max-width:calc(100% - 24px);box-shadow:0 4px 16px rgb(0 0 0/.2)}
+}
 </style>
 </head>
 <body>
@@ -107,7 +132,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
       <input id="q" type="search" placeholder="Поиск: название, город, телефон">
       <div class="row"><select id="fType"></select><select id="fRegion"><option value="">Все области</option></select></div>
       <div class="row"><select id="fStatus"></select><select id="fOwner"><option value="">Все ответственные</option><option value="me">Мои</option><option value="none">Без ответственного</option></select></div>
-      <div class="row" style="flex-wrap:wrap"><button class="primary" id="addBtn" type="button">+ Добавить точку</button><button id="reportBtn" type="button">Отчёт</button><button id="reload" type="button">Обновить</button><button id="logout" type="button">Выйти</button></div>
+      <div class="row" style="flex-wrap:wrap"><button class="primary" id="addBtn" type="button">+ Добавить точку</button><button id="reportBtn" type="button">Отчёт</button><button id="reload" type="button">Обновить</button><button id="logout" type="button">Выйти</button><button id="installBtn" type="button" hidden>Установить на телефон</button></div>
       <div class="k" id="vQueue" hidden></div>
       <label class="chk k"><input type="checkbox" id="fHidden"> Показать только скрытые точки</label>
       <div class="k" id="cnt"></div>
@@ -116,7 +141,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   </aside>
   <div class="mapwrap">
     <div id="map"></div>
-    <div id="addHint" hidden>Кликните по карте, где находится объект. <button id="addCancel" type="button">Отмена</button></div>
+    <div id="addHint" hidden>Нажмите на карту, где находится объект. <button id="addCancel" type="button">Отмена</button></div>
     <div id="panel" hidden>
       <div class="ph"><div><span class="pill" id="pType"></span><h2 id="pTitle" style="font-size:18px;margin-top:4px"></h2></div><button id="pClose" type="button" aria-label="Закрыть">✕</button></div>
       <form class="pb" id="pForm">
@@ -165,6 +190,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
       </form>
     </div>
   </div>
+  <nav id="mnav"><button type="button" data-v="map" class="on">Карта</button><button type="button" data-v="list">Список</button><button type="button" id="mAdd">+ Точка</button></nav>
 </div>
 
 <div id="report" hidden>
@@ -324,12 +350,30 @@ function render(){
     const t=TYPES[p.type]||TYPES.wood_osm;
     li.innerHTML=`<i class="dot" style="background:var(${t[1]})"></i><span></span><span class="pill ${p.status}"></span><span class="r"></span>`;
     li.children[1].textContent=p.name;li.children[2].textContent=STATUSES[p.status]||p.status;li.children[3].textContent=[p.hidden?'скрыта':'',p.address,p.region,p.lat==null?'нет на карте':''].filter(Boolean).join(' · ');
-    li.onclick=()=>openPlace(p.id,true);frag.appendChild(li);});
+    li.onclick=()=>{if(mob())mView('map');openPlace(p.id,true);};frag.appendChild(li);});
   list.appendChild(frag);highlight();const nh=places.filter(p=>p.hidden).length;
   $('cnt').textContent=`Показано ${n} из ${places.length}`+(nh?` · скрыто ${nh}`:'')+(n>500?' (в списке первые 500, на карте все)':'');
 }
 ['q','fType','fRegion','fStatus','fOwner','fHidden'].forEach(id=>$(id).addEventListener('input',render));
 $('reload').onclick=loadAll;
+
+// телефон: внизу переключатель «Карта / Список»
+const mob=()=>innerWidth<=760;
+function mView(v){$('app').classList.toggle('m-list',v==='list');document.querySelectorAll('#mnav [data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));}
+document.querySelectorAll('#mnav [data-v]').forEach(b=>b.onclick=()=>mView(b.dataset.v));
+$('mAdd').onclick=()=>{mView('map');$('panel').hidden=true;cur=null;render();$('addBtn').click();};
+
+// установка как приложения: Android/Chrome дают системное окно, на iPhone показываем подсказку
+const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+const ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+let installEv=null;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEv=e;$('installBtn').hidden=false;});
+addEventListener('appinstalled',()=>{$('installBtn').hidden=true;});
+if(ios&&!standalone)$('installBtn').hidden=false;
+$('installBtn').onclick=async()=>{
+  if(installEv){installEv.prompt();await installEv.userChoice;installEv=null;$('installBtn').hidden=true;return;}
+  alert('Откройте сайт в Safari, нажмите «Поделиться» (квадрат со стрелкой) и выберите «На экран Домой».');};
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 async function openPlace(id,fly){
   cur=id;const p=places.find(x=>x.id===id);if(!p)return;
@@ -340,7 +384,7 @@ async function openPlace(id,fly){
   $('pMeta').textContent=`Источник: ${p.source||'добавлено вручную'} · изменено ${new Date(p.updated_at).toLocaleString('ru-RU')}`;
   const mp=profiles.find(x=>x.id===me.id);$('pDelete').hidden=!(mp?.role==='admin'||mp?.can_delete_places);$('pErr').textContent='';
   showCoords(p);showHidden(p);
-  if(fly&&p.lat!=null){map.setView(pos(p),Math.max(map.getZoom(),15),{animate:false});if(innerWidth>760)map.panBy([$('panel').offsetWidth/2,0],{animate:false});}
+  if(fly&&p.lat!=null){map.setView(pos(p),Math.max(map.getZoom(),15),{animate:false});if(!mob())map.panBy([$('panel').offsetWidth/2,0],{animate:false});else map.panBy([0,$('panel').offsetHeight/2],{animate:false});}
   $('visitForm').hidden=true;$('pVisit').hidden=false;
   render();loadComments(id);loadVisits(id);
 }
@@ -393,8 +437,8 @@ $('addComment').onclick=async()=>{const body=$('newComment').value.trim();if(!bo
   const{error}=await sb.from('place_comments').insert({place_id:cur,author:me.id,body});if(error){$('pErr').textContent=error.message;return;}
   $('newComment').value='';loadComments(cur);};
 
-$('addBtn').onclick=()=>{mode='add';$('addHint').hidden=false;$('addHint').firstChild.textContent='Кликните по карте, где находится объект. ';};
-$('pMove').onclick=()=>{if(!cur)return;mode='move';$('addHint').hidden=false;$('addHint').firstChild.textContent='Кликните по карте в новом месте точки. ';};
+$('addBtn').onclick=()=>{mode='add';$('addHint').hidden=false;$('addHint').firstChild.textContent='Нажмите на карту, где находится объект. ';};
+$('pMove').onclick=()=>{if(!cur)return;mode='move';$('addHint').hidden=false;$('addHint').firstChild.textContent='Нажмите на карту в новом месте точки. ';};
 $('addCancel').onclick=()=>{mode=null;$('addHint').hidden=true;};
 async function createAt(ll){mode=null;$('addHint').hidden=true;
   const{data,error}=await sb.from('places').insert({name:'Новая точка',type:'candidate',status:'to_check',lat:ll.lat,lon:ll.lng,source:'добавлено вручную',created_by:me.id,owner:me.id}).select().single();
