@@ -59,6 +59,7 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .locbtn{width:34px;height:34px;padding:0;display:grid;place-items:center;font-size:18px;line-height:1;background:var(--panel);color:var(--fg);border:0;border-radius:4px}
 .locbtn.on{color:var(--me)}
+.yearbox select{font:inherit;font-size:13px;padding:5px 6px;border:0;border-radius:4px;background:var(--panel);color:var(--fg)}
 .locbtn.wait{animation:locblink 1s infinite}
 @keyframes locblink{50%{opacity:.4}}
 .comment{border-left:3px solid var(--line);padding:2px 0 2px 8px}
@@ -220,8 +221,20 @@ function initMap(){
   const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© участники OpenStreetMap'});
   const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Снимки © Esri, Maxar, Earthstar Geographics'});
   const labels=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19});
+  // архив снимков Esri (Wayback): последний выпуск каждого года
+  const WB=[['2026','63116'],['2025','13192'],['2024','16453'],['2023','56102'],['2022','45134'],['2021','26120'],['2020','29260'],['2019','4756'],['2018','23448'],['2017','25521'],['2016','18966'],['2015','28163'],['2014','5844']];
+  const wbUrl=r=>`https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/${r}/{z}/{y}/{x}`;
+  const arch=L.tileLayer(wbUrl(WB[0][1]),{maxZoom:19,attribution:'Архив снимков © Esri World Imagery Wayback'});
   osm.addTo(map);
-  L.control.layers({'Схема':osm,'Спутник':sat,'Спутник с подписями':L.layerGroup([sat,labels])}).addTo(map);
+  L.control.layers({'Схема':osm,'Спутник':sat,'Спутник с подписями':L.layerGroup([sat,labels]),'Спутник: архив по годам':arch}).addTo(map);
+  const Y=L.Control.extend({options:{position:'topright'},onAdd(){
+    const d=L.DomUtil.create('div','leaflet-bar yearbox');d.hidden=true;
+    const sel=L.DomUtil.create('select','',d);sel.id='wbYear';sel.title='Год снимка';
+    WB.forEach(([y,r],i)=>sel.add(new Option('Снимок '+y,r,false,i===0)));
+    sel.onchange=()=>arch.setUrl(wbUrl(sel.value));
+    L.DomEvent.disableClickPropagation(d);return d;}});
+  const yc=new Y().addTo(map);
+  map.on('baselayerchange',e=>{yc.getContainer().hidden=e.layer!==arch;});
   addLocate();
   map.on('click',e=>{if(mode==='add')createAt(e.latlng);else if(mode==='move')moveTo(e.latlng);});
 }
