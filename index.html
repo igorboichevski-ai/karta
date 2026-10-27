@@ -337,6 +337,11 @@ async function loadAll(){
     $('offNote').textContent='Нет интернета · точки на '+new Date(sn.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});$('offNote').hidden=false;}
   const mine=profiles.find(p=>p.id===me.id);$('me').textContent=(mine?.full_name||me.email)+(mine?.role==='admin'?' · админ':'');
   const o=$('e_owner');o.innerHTML='<option value="">—</option>';profiles.forEach(p=>o.add(new Option(p.full_name||p.id,p.id)));
+  // фильтр «Ответственный»: кроме «Мои» и «Без ответственного» — каждый сотрудник
+  const fo=$('fOwner'),keep=fo.value;fo.querySelectorAll('option.person').forEach(x=>x.remove());
+  [...profiles].sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||'','ru')).forEach(p=>{const n=places.filter(x=>x.owner===p.id).length;
+    const op=new Option(`${p.full_name||'Без имени'} (${n})`,p.id);op.className='person';fo.add(op);});
+  fo.value=[...fo.options].some(x=>x.value===keep)?keep:'';
   applyPending();
   markers.forEach(m=>m.remove());markers.clear();
   spread();places.forEach(p=>{if(p.lat!=null)markers.set(p.id,mkMarker(p));});
@@ -362,7 +367,7 @@ function highlight(){
 }
 function visible(p){
   const q=$('q').value.trim().toLowerCase(),t=$('fType').value,r=$('fRegion').value,s=$('fStatus').value,o=$('fOwner').value;
-  return (!q||[p.name,p.address,p.phone,p.notes].join(' ').toLowerCase().includes(q))&&(!t||p.type===t)&&(!r||p.region===r)&&(!s||p.status===s)&&(!o||(o==='me'?p.owner===me.id:o==='none'?!p.owner:true))&&(!!p.hidden===$('fHidden').checked);
+  return (!q||[p.name,p.address,p.phone,p.notes].join(' ').toLowerCase().includes(q))&&(!t||p.type===t)&&(!r||p.region===r)&&(!s||p.status===s)&&(!o||(o==='me'?p.owner===me.id:o==='none'?!p.owner:p.owner===o))&&(!!p.hidden===$('fHidden').checked);
 }
 function render(){
   const list=$('list');list.innerHTML='';let n=0;const frag=document.createDocumentFragment();
