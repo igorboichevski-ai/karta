@@ -207,7 +207,7 @@ async function boot(){
   if(!session){$('login').hidden=false;$('app').hidden=true;return;}
   $('login').hidden=true;$('app').hidden=false;
   me=session.user;
-  if(!map) initMap();
+  if(!map){initMap();addMapbox();}
   await loadAll();
   flushVisits();
 }
@@ -227,9 +227,7 @@ function initMap(){
   const arch=L.tileLayer(wbUrl(WB[0][1]),{maxZoom:19,attribution:'Архив снимков © Esri World Imagery Wayback'});
   osm.addTo(map);
   const bases={'Схема':osm,'Спутник':sat,'Спутник с подписями':L.layerGroup([sat,labels]),'Спутник: архив по годам':arch};
-  const mbt=KARTA_CONFIG.mapboxToken;
-  if(mbt)bases['Спутник Mapbox']=L.tileLayer(`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${mbt}`,{tileSize:512,zoomOffset:-1,maxZoom:19,attribution:'© Mapbox © Maxar'});
-  L.control.layers(bases).addTo(map);
+  layersCtl=L.control.layers(bases).addTo(map);
   const Y=L.Control.extend({options:{position:'topright'},onAdd(){
     const d=L.DomUtil.create('div','leaflet-bar yearbox');d.hidden=true;
     const sel=L.DomUtil.create('select','',d);sel.id='wbYear';sel.title='Год снимка';
@@ -240,6 +238,13 @@ function initMap(){
   map.on('baselayerchange',e=>{yc.getContainer().hidden=e.layer!==arch;});
   addLocate();
   map.on('click',e=>{if(mode==='add')createAt(e.latlng);else if(mode==='move')moveTo(e.latlng);});
+}
+// Спутник Mapbox: ключ берём из config.js или из базы (таблица app_settings, видна только вошедшим)
+let layersCtl=null;
+async function addMapbox(){
+  let t=KARTA_CONFIG.mapboxToken;
+  if(!t){const{data}=await sb.from('app_settings').select('value').eq('key','mapbox_token').maybeSingle();t=data?.value;}
+  if(t)layersCtl.addBaseLayer(L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/512/{z}/{x}/{y}?access_token=${t}`,{tileSize:512,zoomOffset:-1,maxZoom:19,attribution:'© Mapbox © OpenStreetMap © Maxar'}),'Спутник Mapbox');
 }
 // «Где я»: кнопка под зумом, точка обновляется при движении, как в навигаторе
 let geoWatch=null,geoDot=null,geoAcc=null,geoFollow=false;

@@ -123,3 +123,10 @@ create policy "author or admin edits visits" on public.visits for update to auth
 drop policy if exists "author or admin deletes visits" on public.visits;
 create policy "author or admin deletes visits" on public.visits for delete to authenticated using (author = auth.uid() or public.is_admin());
 
+create table if not exists public.app_settings (key text primary key, value text);
+alter table public.app_settings enable row level security;
+drop policy if exists "team reads settings" on public.app_settings;
+create policy "team reads settings" on public.app_settings for select to authenticated using (true);
+drop policy if exists "admin edits settings" on public.app_settings;
+create policy "admin edits settings" on public.app_settings for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
