@@ -94,6 +94,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .rtable td.c{cursor:pointer;color:var(--accent)}
 @media (max-width:760px){#report{padding:0}.rbox{border-radius:0;max-height:none}}
 #mnav{display:none}
+#offNote{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:900;background:var(--cand);color:#1d2a22;border-radius:99px;padding:5px 12px;font-size:13px;font-weight:500;white-space:nowrap;box-shadow:0 2px 8px rgb(0 0 0/.2)}
 /* телефон: карта на весь экран, список отдельной вкладкой, внизу переключатель */
 @media (max-width:760px){
   input,select,textarea{font-size:16px}
@@ -141,6 +142,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   </aside>
   <div class="mapwrap">
     <div id="map"></div>
+    <div id="offNote" hidden></div>
     <div id="addHint" hidden>Нажмите на карту, где находится объект. <button id="addCancel" type="button">Отмена</button></div>
     <div id="panel" hidden>
       <div class="ph"><div><span class="pill" id="pType"></span><h2 id="pTitle" style="font-size:18px;margin-top:4px"></h2></div><button id="pClose" type="button" aria-label="Закрыть">✕</button></div>
@@ -229,10 +231,13 @@ opts($('v_result'),RESULTS);opts($('fType'),TYPES,'Все типы');opts($('fSt
 REGIONS.forEach(r=>{$('fRegion').add(new Option(r,r));});$('e_region').add(new Option('—',''));REGIONS.forEach(r=>$('e_region').add(new Option(r,r)));
 
 async function boot(){
-  const {data:{session}}=await sb.auth.getSession();
-  if(!session){$('login').hidden=false;$('app').hidden=true;return;}
+  // без сети с устаревшим входом Supabase долго пытается его обновить, поэтому ждём недолго, если есть сохранённые точки
+  const snap=await kv('get',SNAP);
+  const r=await (snap?tmo(sb.auth.getSession(),navigator.onLine?6000:800):sb.auth.getSession());
+  const session=r==='timeout'?null:r.data.session,error=r==='timeout'||r.error;
+  if(!session&&!(snap&&(!navigator.onLine||error))){$('login').hidden=false;$('app').hidden=true;return;}
   $('login').hidden=true;$('app').hidden=false;
-  me=session.user;
+  me=session?session.user:{id:snap.uid,email:snap.email};
   if(!map){initMap();addMapbox();}
   await loadAll();
   flushVisits();
@@ -240,7 +245,7 @@ async function boot(){
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginErr').textContent='';
   const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
   if(error){$('loginErr').textContent='Не получилось войти: проверьте почту и пароль.';return;} boot();};
-$('logout').onclick=async()=>{await sb.auth.signOut();location.reload();};
+$('logout').onclick=async()=>{await kv('del',SNAP);await sb.auth.signOut();location.reload();};
 
 function initMap(){
   map=L.map('map',{preferCanvas:true,zoomSnap:.5}).setView([53.7,27.9],7);
@@ -309,11 +314,28 @@ function toggleLocate(){
     alert(err.code===1?'Доступ к местоположению запрещён. Разрешите его для этого сайта в настройках браузера или телефона.':'Не получилось определить местоположение. Проверьте, что геолокация на устройстве включена.');
   },{enableHighAccuracy:true,maximumAge:5000,timeout:20000});
 }
+// ---- без интернета: последние загруженные точки хранятся в браузере (IndexedDB) и показываются, пока нет связи ----
+const SNAP='snapshot';let offline=false,snapT=null;
+function idb(){return new Promise((ok,no)=>{const r=indexedDB.open('karta',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);});}
+async function kv(op,key,val){try{const db=await idb();return await new Promise((ok,no)=>{const st=db.transaction('kv',op==='get'?'readonly':'readwrite').objectStore('kv');
+  const r=op==='get'?st.get(key):op==='put'?st.put(val,key):st.delete(key);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);});}catch{return null;}}
+function snapSave(){clearTimeout(snapT);snapT=setTimeout(()=>{if(me&&places.length)kv('put',SNAP,{uid:me.id,email:me.email,at:Date.now(),profiles,places});},1000);}
+const tmo=(pr,ms)=>Promise.race([pr,new Promise(r=>setTimeout(()=>r('timeout'),ms))]);
+const isNet=e=>!navigator.onLine||/fetch|network|Load failed/i.test(e?.message||String(e));
+const errText=e=>isNet(e)?'Нет интернета: не сохранилось. Повторите, когда появится связь (визиты можно отмечать, они уйдут сами).':e.message;
+addEventListener('online',()=>{if(me&&offline)loadAll();});
 async function fetchAll(table,select){let out=[],from=0;for(;;){const{data,error}=await sb.from(table).select(select).range(from,from+999);if(error)throw error;out=out.concat(data);if(data.length<1000)break;from+=1000;}return out;}
 async function loadAll(){
+  const sn0=await kv('get',SNAP),sn=sn0?.uid===me.id?sn0:null;
   try{
-    [profiles,places]=await Promise.all([fetchAll('profiles','*'),fetchAll('places','*')]);
-  }catch(err){$('cnt').textContent='Ошибка загрузки: '+err.message;return;}
+    const go=Promise.all([fetchAll('profiles','*'),fetchAll('places','*')]);
+    const r=await (sn?tmo(go,navigator.onLine?20000:1500):go);if(r==='timeout')throw new Error('network timeout');
+    [profiles,places]=r;
+    offline=false;$('offNote').hidden=true;snapSave();
+  }catch(err){
+    if(!sn){$('cnt').textContent=isNet(err)?'Нет интернета, а сохранённых точек в этом браузере ещё нет.':'Ошибка загрузки: '+err.message;return;}
+    profiles=sn.profiles;places=sn.places;offline=true;setTimeout(()=>{if(offline&&navigator.onLine)loadAll();},60000);
+    $('offNote').textContent='Нет интернета · точки на '+new Date(sn.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});$('offNote').hidden=false;}
   const mine=profiles.find(p=>p.id===me.id);$('me').textContent=(mine?.full_name||me.email)+(mine?.role==='admin'?' · админ':'');
   const o=$('e_owner');o.innerHTML='<option value="">—</option>';profiles.forEach(p=>o.add(new Option(p.full_name||p.id,p.id)));
   markers.forEach(m=>m.remove());markers.clear();
@@ -401,7 +423,7 @@ function showHidden(p){
 // скрытая точка пропадает с карты и из списка; увидеть её можно галочкой «Показать только скрытые точки»
 $('pHide').onclick=async()=>{const p=places.find(x=>x.id===cur);if(!p)return;const h=!p.hidden;
   const{data,error}=await sb.from('places').update({hidden:h,hidden_by:h?me.id:null,hidden_at:h?new Date().toISOString():null}).eq('id',cur).select().single();
-  if(error){$('pErr').textContent=/hidden/.test(error.message)?'Скрытие ещё не включено: администратору нужно один раз выполнить SQL-скрипт update_hidden.sql в Supabase.':'Не сохранилось: '+error.message;return;}
+  if(error){$('pErr').textContent=/hidden/.test(error.message)?'Скрытие ещё не включено: администратору нужно один раз выполнить SQL-скрипт update_hidden.sql в Supabase.':errText(error);return;}
   Object.assign(p,data);await sb.from('place_comments').insert({place_id:p.id,author:me.id,body:h?'Скрыл(а) точку с карты.':'Вернул(а) точку на карту.'});
   if(h!==$('fHidden').checked){$('panel').hidden=true;cur=null;}
   refreshMarker(p);if(cur)openPlace(cur);};
@@ -415,18 +437,18 @@ $('pForm').onsubmit=async e=>{e.preventDefault();const p=places.find(x=>x.id===c
   const patch={};for(const f of['name','type','status','address','phone','email','website','unp','region','notes'])patch[f]=$('e_'+f).value.trim()||null;
   patch.name=patch.name||p.name;patch.type=patch.type||p.type;patch.status=patch.status||'new';patch.owner=$('e_owner').value||null;
   const{data,error}=await sb.from('places').update(patch).eq('id',cur).select().single();
-  if(error){$('pErr').textContent='Не сохранилось: '+error.message;return;}
+  if(error){$('pErr').textContent=isNet(error)?errText(error):'Не сохранилось: '+error.message;return;}
   if(toRefused)await sb.from('place_comments').insert({place_id:p.id,author:me.id,body:'Отказ: '+reason});
   Object.assign(p,data);refreshMarker(p);openPlace(p.id);$('pErr').textContent='Сохранено';};
-function refreshMarker(p){offs.delete(p.id);markers.get(p.id)?.remove();if(p.lat!=null)markers.set(p.id,mkMarker(p));render();}
+function refreshMarker(p){offs.delete(p.id);markers.get(p.id)?.remove();if(p.lat!=null)markers.set(p.id,mkMarker(p));render();snapSave();}
 $('pDelete').onclick=async()=>{if($('pDelete').dataset.confirm!=='1'){$('pDelete').dataset.confirm='1';$('pDelete').textContent='Точно удалить?';return;}
   $('pDelete').dataset.confirm='';$('pDelete').textContent='Удалить';
-  const{error}=await sb.from('places').delete().eq('id',cur);if(error){$('pErr').textContent=error.message;return;}
-  markers.get(cur)?.remove();markers.delete(cur);places=places.filter(x=>x.id!==cur);$('panel').hidden=true;cur=null;render();};
+  const{error}=await sb.from('places').delete().eq('id',cur);if(error){$('pErr').textContent=errText(error);return;}
+  markers.get(cur)?.remove();markers.delete(cur);places=places.filter(x=>x.id!==cur);$('panel').hidden=true;cur=null;render();snapSave();};
 
 async function loadComments(id){
   const{data,error}=await sb.from('place_comments').select('*').eq('place_id',id).order('created_at',{ascending:false});
-  const box=$('comments');box.innerHTML='';if(error){box.textContent=error.message;return;}
+  const box=$('comments');box.innerHTML='';if(error){box.textContent=isNet(error)?'Комментарии появятся, когда будет интернет.':error.message;return;}
   const p=places.find(x=>x.id===id),why=data.find(c=>c.body.startsWith('Отказ:'));
   if(p?.status==='refused'&&why&&id===cur){const a=profiles.find(x=>x.id===why.author);$('pRefNote').textContent=`Отказ: ${why.body.slice(6).trim()} (${a?.full_name||'—'}, ${new Date(why.created_at).toLocaleDateString('ru-RU')}). Время на эту точку не тратить.`;}
   if(!data.length){box.innerHTML='<span class="k">Пока нет комментариев.</span>';return;}
@@ -434,7 +456,7 @@ async function loadComments(id){
     d.innerHTML='<div class="k"></div><div></div>';d.children[0].textContent=(a?.full_name||'—')+' · '+new Date(c.created_at).toLocaleString('ru-RU');d.children[1].textContent=c.body;box.appendChild(d);});
 }
 $('addComment').onclick=async()=>{const body=$('newComment').value.trim();if(!body||!cur)return;
-  const{error}=await sb.from('place_comments').insert({place_id:cur,author:me.id,body});if(error){$('pErr').textContent=error.message;return;}
+  const{error}=await sb.from('place_comments').insert({place_id:cur,author:me.id,body});if(error){$('pErr').textContent=errText(error);return;}
   $('newComment').value='';loadComments(cur);};
 
 $('addBtn').onclick=()=>{mode='add';$('addHint').hidden=false;$('addHint').firstChild.textContent='Нажмите на карту, где находится объект. ';};
@@ -442,10 +464,10 @@ $('pMove').onclick=()=>{if(!cur)return;mode='move';$('addHint').hidden=false;$('
 $('addCancel').onclick=()=>{mode=null;$('addHint').hidden=true;};
 async function createAt(ll){mode=null;$('addHint').hidden=true;
   const{data,error}=await sb.from('places').insert({name:'Новая точка',type:'candidate',status:'to_check',lat:ll.lat,lon:ll.lng,source:'добавлено вручную',created_by:me.id,owner:me.id}).select().single();
-  if(error){alert(error.message);return;}places.unshift(data);markers.set(data.id,mkMarker(data));openPlace(data.id);$('e_name').select();}
+  if(error){alert(errText(error));return;}places.unshift(data);markers.set(data.id,mkMarker(data));openPlace(data.id);snapSave();$('e_name').select();}
 async function moveTo(ll){mode=null;$('addHint').hidden=true;const p=places.find(x=>x.id===cur);
   const{data,error}=await sb.from('places').update({lat:ll.lat,lon:ll.lng}).eq('id',cur).select().single();
-  if(error){$('pErr').textContent=error.message;return;}Object.assign(p,data);refreshMarker(p);showCoords(p);}
+  if(error){$('pErr').textContent=errText(error);return;}Object.assign(p,data);refreshMarker(p);showCoords(p);}
 
 // ---- визиты: менеджер на месте заполняет короткую форму; без интернета визит ждёт в телефоне и уходит позже ----
 const VQ='karta_visit_queue';
@@ -494,7 +516,7 @@ async function loadVisits(id){const box=$('visits');box.innerHTML='';
   const q=vqGet().filter(r=>r.place_id===id).map(r=>({...r,queued:true}));
   const{data,error}=await sb.from('visits').select('*').eq('place_id',id).order('visited_at',{ascending:false});
   const all=q.concat(error?[]:data);
-  if(!all.length){box.innerHTML=`<span class="k">${error&&!q.length?'Визиты ещё не включены (нужен скрипт update_visits.sql).':'Визитов пока не было.'}</span>`;return;}
+  if(!all.length){box.innerHTML=`<span class="k">${error&&!q.length?(isNet(error)?'Визиты появятся, когда будет интернет.':'Визиты ещё не включены (нужен скрипт update_visits.sql).'):'Визитов пока не было.'}</span>`;return;}
   all.forEach(v=>{const d=document.createElement('div');d.className='vitem'+(v.queued?' queued':'');const a=profiles.find(x=>x.id===v.author);
     d.innerHTML='<div class="k"></div><div><b></b></div><div></div>';
     d.children[0].textContent=(a?.full_name||'—')+' · '+new Date(v.visited_at).toLocaleString('ru-RU')+(v.queued?' · ждёт отправки':'');
