@@ -336,10 +336,12 @@ async function loadAll(){
     profiles=sn.profiles;places=sn.places;offline=true;setTimeout(()=>{if(offline&&navigator.onLine)loadAll();},60000);
     $('offNote').textContent='Нет интернета · точки на '+new Date(sn.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});$('offNote').hidden=false;}
   const mine=profiles.find(p=>p.id===me.id);$('me').textContent=(mine?.full_name||me.email)+(mine?.role==='admin'?' · админ':'');
-  const o=$('e_owner');o.innerHTML='<option value="">—</option>';profiles.forEach(p=>o.add(new Option(p.full_name||p.id,p.id)));
+  // служебные учётки (…@karta.local) в списках людей не показываем
+  const people=profiles.filter(p=>!/@karta\.local$/i.test(p.full_name||''));
+  const o=$('e_owner');o.innerHTML='<option value="">—</option>';people.forEach(p=>o.add(new Option(p.full_name||p.id,p.id)));
   // фильтр «Ответственный»: кроме «Мои» и «Без ответственного» — каждый сотрудник
   const fo=$('fOwner'),keep=fo.value;fo.querySelectorAll('option.person').forEach(x=>x.remove());
-  [...profiles].sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||'','ru')).forEach(p=>{const n=places.filter(x=>x.owner===p.id).length;
+  [...people].sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||'','ru')).forEach(p=>{const n=places.filter(x=>x.owner===p.id).length;
     const op=new Option(`${p.full_name||'Без имени'} (${n})`,p.id);op.className='person';fo.add(op);});
   fo.value=[...fo.options].some(x=>x.value===keep)?keep:'';
   applyPending();
