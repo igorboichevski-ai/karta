@@ -240,7 +240,7 @@ async function boot(){
   me=session?session.user:{id:snap.uid,email:snap.email};
   if(!map){initMap();addMapbox();}
   await loadAll();
-  flushVisits();
+  flushAll();
 }
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginErr').textContent='';
   const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
@@ -323,7 +323,6 @@ function snapSave(){clearTimeout(snapT);snapT=setTimeout(()=>{if(me&&places.leng
 const tmo=(pr,ms)=>Promise.race([pr,new Promise(r=>setTimeout(()=>r('timeout'),ms))]);
 const isNet=e=>!navigator.onLine||/fetch|network|Load failed/i.test(e?.message||String(e));
 const errText=e=>isNet(e)?'Нет интернета: не сохранилось. Повторите, когда появится связь (визиты можно отмечать, они уйдут сами).':e.message;
-addEventListener('online',()=>{if(me&&offline)loadAll();});
 async function fetchAll(table,select){let out=[],from=0;for(;;){const{data,error}=await sb.from(table).select(select).range(from,from+999);if(error)throw error;out=out.concat(data);if(data.length<1000)break;from+=1000;}return out;}
 async function loadAll(){
   const sn0=await kv('get',SNAP),sn=sn0?.uid===me.id?sn0:null;
@@ -338,6 +337,7 @@ async function loadAll(){
     $('offNote').textContent='Нет интернета · точки на '+new Date(sn.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});$('offNote').hidden=false;}
   const mine=profiles.find(p=>p.id===me.id);$('me').textContent=(mine?.full_name||me.email)+(mine?.role==='admin'?' · админ':'');
   const o=$('e_owner');o.innerHTML='<option value="">—</option>';profiles.forEach(p=>o.add(new Option(p.full_name||p.id,p.id)));
+  applyPending();
   markers.forEach(m=>m.remove());markers.clear();
   spread();places.forEach(p=>{if(p.lat!=null)markers.set(p.id,mkMarker(p));});
   render();
@@ -422,9 +422,9 @@ function showHidden(p){
 }
 // скрытая точка пропадает с карты и из списка; увидеть её можно галочкой «Показать только скрытые точки»
 $('pHide').onclick=async()=>{const p=places.find(x=>x.id===cur);if(!p)return;const h=!p.hidden;
-  const{data,error}=await sb.from('places').update({hidden:h,hidden_by:h?me.id:null,hidden_at:h?new Date().toISOString():null}).eq('id',cur).select().single();
-  if(error){$('pErr').textContent=/hidden/.test(error.message)?'Скрытие ещё не включено: администратору нужно один раз выполнить SQL-скрипт update_hidden.sql в Supabase.':errText(error);return;}
-  Object.assign(p,data);await sb.from('place_comments').insert({place_id:p.id,author:me.id,body:h?'Скрыл(а) точку с карты.':'Вернул(а) точку на карту.'});
+  const{data,error}=await savePlace(cur,{hidden:h,hidden_by:h?me.id:null,hidden_at:h?new Date().toISOString():null});
+  if(error){$('pErr').textContent=/hidden/.test(error.message)?'Скрытие ещё не включено: администратору нужно один раз выполнить SQL-скрипт update_hidden.sql в Supabase.':error.message;return;}
+  Object.assign(p,data);await addCmt(p.id,h?'Скрыл(а) точку с карты.':'Вернул(а) точку на карту.');
   if(h!==$('fHidden').checked){$('panel').hidden=true;cur=null;}
   refreshMarker(p);if(cur)openPlace(cur);};
 $('pCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('pCoords').textContent);$('pCopy').textContent='Скопировано';}catch{$('pCopy').textContent='Не скопировалось';}setTimeout(()=>$('pCopy').textContent='Копировать',1500);};
@@ -436,38 +436,46 @@ $('pForm').onsubmit=async e=>{e.preventDefault();const p=places.find(x=>x.id===c
   if(toRefused&&!reason){$('pErr').textContent='Напишите причину отказа, чтобы коллеги её видели.';$('e_reason').focus();return;}
   const patch={};for(const f of['name','type','status','address','phone','email','website','unp','region','notes'])patch[f]=$('e_'+f).value.trim()||null;
   patch.name=patch.name||p.name;patch.type=patch.type||p.type;patch.status=patch.status||'new';patch.owner=$('e_owner').value||null;
-  const{data,error}=await sb.from('places').update(patch).eq('id',cur).select().single();
-  if(error){$('pErr').textContent=isNet(error)?errText(error):'Не сохранилось: '+error.message;return;}
-  if(toRefused)await sb.from('place_comments').insert({place_id:p.id,author:me.id,body:'Отказ: '+reason});
-  Object.assign(p,data);refreshMarker(p);openPlace(p.id);$('pErr').textContent='Сохранено';};
+  for(const k in patch)if(patch[k]===(p[k]??null))delete patch[k]; // отправляем только изменённые поля
+  if(!Object.keys(patch).length){$('pErr').textContent='Изменений нет';return;}
+  const{data,error,queued}=await savePlace(cur,patch);
+  if(error){$('pErr').textContent='Не сохранилось: '+error.message;return;}
+  if(toRefused)await addCmt(p.id,'Отказ: '+reason);
+  Object.assign(p,data);refreshMarker(p);openPlace(p.id);$('pErr').textContent=queued?SAVED_LOCAL:'Сохранено';};
 function refreshMarker(p){offs.delete(p.id);markers.get(p.id)?.remove();if(p.lat!=null)markers.set(p.id,mkMarker(p));render();snapSave();}
 $('pDelete').onclick=async()=>{if($('pDelete').dataset.confirm!=='1'){$('pDelete').dataset.confirm='1';$('pDelete').textContent='Точно удалить?';return;}
   $('pDelete').dataset.confirm='';$('pDelete').textContent='Удалить';
-  const{error}=await sb.from('places').delete().eq('id',cur);if(error){$('pErr').textContent=errText(error);return;}
+  if(cur<0){oqSet(oqGet().filter(o=>o.id!==cur&&o.tmp!==cur));vqSet(vqGet().filter(r=>r.place_id!==cur));updQueue();}
+  else{const{error}=await sb.from('places').delete().eq('id',cur);if(error){$('pErr').textContent=isNet(error)?'Удалять точки можно только с интернетом.':error.message;return;}}
   markers.get(cur)?.remove();markers.delete(cur);places=places.filter(x=>x.id!==cur);$('panel').hidden=true;cur=null;render();snapSave();};
 
 async function loadComments(id){
-  const{data,error}=await sb.from('place_comments').select('*').eq('place_id',id).order('created_at',{ascending:false});
-  const box=$('comments');box.innerHTML='';if(error){box.textContent=isNet(error)?'Комментарии появятся, когда будет интернет.':error.message;return;}
+  const pend=oqGet().filter(o=>o.t==='cmt'&&o.id===id).reverse().map(o=>({author:o.author,created_at:o.at,body:o.body,queued:true}));
+  const r=id<0?{data:[]}:await sb.from('place_comments').select('*').eq('place_id',id).order('created_at',{ascending:false});
+  const box=$('comments');box.innerHTML='';if(r.error&&!pend.length){box.textContent=isNet(r.error)?'Комментарии появятся, когда будет интернет.':r.error.message;return;}
+  const data=pend.concat(r.error?[]:r.data);
   const p=places.find(x=>x.id===id),why=data.find(c=>c.body.startsWith('Отказ:'));
   if(p?.status==='refused'&&why&&id===cur){const a=profiles.find(x=>x.id===why.author);$('pRefNote').textContent=`Отказ: ${why.body.slice(6).trim()} (${a?.full_name||'—'}, ${new Date(why.created_at).toLocaleDateString('ru-RU')}). Время на эту точку не тратить.`;}
   if(!data.length){box.innerHTML='<span class="k">Пока нет комментариев.</span>';return;}
   data.forEach(c=>{const d=document.createElement('div');d.className='comment';const a=profiles.find(x=>x.id===c.author);
-    d.innerHTML='<div class="k"></div><div></div>';d.children[0].textContent=(a?.full_name||'—')+' · '+new Date(c.created_at).toLocaleString('ru-RU');d.children[1].textContent=c.body;box.appendChild(d);});
+    d.innerHTML='<div class="k"></div><div></div>';d.children[0].textContent=(a?.full_name||'—')+' · '+new Date(c.created_at).toLocaleString('ru-RU')+(c.queued?' · ждёт отправки':'');d.children[1].textContent=c.body;box.appendChild(d);});
 }
 $('addComment').onclick=async()=>{const body=$('newComment').value.trim();if(!body||!cur)return;
-  const{error}=await sb.from('place_comments').insert({place_id:cur,author:me.id,body});if(error){$('pErr').textContent=errText(error);return;}
+  const{error}=await addCmt(cur,body);if(error){$('pErr').textContent=error.message;return;}
   $('newComment').value='';loadComments(cur);};
 
 $('addBtn').onclick=()=>{mode='add';$('addHint').hidden=false;$('addHint').firstChild.textContent='Нажмите на карту, где находится объект. ';};
 $('pMove').onclick=()=>{if(!cur)return;mode='move';$('addHint').hidden=false;$('addHint').firstChild.textContent='Нажмите на карту в новом месте точки. ';};
 $('addCancel').onclick=()=>{mode=null;$('addHint').hidden=true;};
 async function createAt(ll){mode=null;$('addHint').hidden=true;
-  const{data,error}=await sb.from('places').insert({name:'Новая точка',type:'candidate',status:'to_check',lat:ll.lat,lon:ll.lng,source:'добавлено вручную',created_by:me.id,owner:me.id}).select().single();
-  if(error){alert(errText(error));return;}places.unshift(data);markers.set(data.id,mkMarker(data));openPlace(data.id);snapSave();$('e_name').select();}
+  const row={name:'Новая точка',type:'candidate',status:'to_check',lat:ll.lat,lon:ll.lng,source:'добавлено вручную',created_by:me.id,owner:me.id};
+  let{data,error}=navigator.onLine?await sb.from('places').insert(row).select().single():{error:{message:'offline'}};
+  if(error&&isNet(error)){const now=new Date().toISOString();data={...row,id:-Date.now(),hidden:false,created_at:now,updated_at:now};error=null;
+    oqPush({t:'ins',tmp:data.id,row,place:data});}
+  if(error){alert(error.message);return;}places.unshift(data);markers.set(data.id,mkMarker(data));openPlace(data.id);snapSave();$('e_name').select();}
 async function moveTo(ll){mode=null;$('addHint').hidden=true;const p=places.find(x=>x.id===cur);
-  const{data,error}=await sb.from('places').update({lat:ll.lat,lon:ll.lng}).eq('id',cur).select().single();
-  if(error){$('pErr').textContent=errText(error);return;}Object.assign(p,data);refreshMarker(p);showCoords(p);}
+  const{data,error,queued}=await savePlace(cur,{lat:ll.lat,lon:ll.lng});
+  if(error){$('pErr').textContent=error.message;return;}Object.assign(p,data);refreshMarker(p);showCoords(p);if(queued)$('pErr').textContent=SAVED_LOCAL;}
 
 // ---- визиты: менеджер на месте заполняет короткую форму; без интернета визит ждёт в телефоне и уходит позже ----
 const VQ='karta_visit_queue';
@@ -488,7 +496,7 @@ $('v_save').onclick=async()=>{const p=places.find(x=>x.id===cur);if(!p)return;
   if(res==='refused'&&!v('notes')){$('v_err').textContent='Напишите в заметках причину отказа, её увидят все.';$('v_notes').focus();return;}
   const row={place_id:p.id,author:me.id,visited_at:new Date($('v_at').value||Date.now()).toISOString(),result:res,contact_name:v('contact'),contact_phone:v('phone'),
     products:v('products'),volume:v('volume'),next_step:v('next'),next_date:v('next_date'),notes:v('notes'),lat:vPos?.lat??null,lon:vPos?.lng??null};
-  $('v_save').disabled=true;const r=await sendVisit(row);$('v_save').disabled=false;
+  $('v_save').disabled=true;const r=p.id<0?'queued':await sendVisit(row);$('v_save').disabled=false;
   if(r==='error')return;
   if(r==='queued'){const q=vqGet();q.push(row);vqSet(q);updQueue();}
   $('visitForm').hidden=true;$('pVisit').hidden=false;if(cur===p.id){openPlace(p.id);}};
@@ -508,10 +516,54 @@ async function applyVisit(row){const p=places.find(x=>x.id===row.place_id);if(!p
   if(row.result==='refused')await sb.from('place_comments').insert({place_id:p.id,author:row.author,body:'Отказ: '+(row.notes||'')});
 }
 async function flushVisits(){if(!me)return;const q=vqGet();if(!q.length){updQueue();return;}const left=[];
-  for(const row of q){if(row.author!==me.id){left.push(row);continue;}const r=await sendVisit(row);if(r!=='ok')left.push(row);}
+  for(const row of q){if(row.author!==me.id||row.place_id<0){left.push(row);continue;}const r=await sendVisit(row);if(r!=='ok')left.push(row);}
   vqSet(left);updQueue();if(cur)loadVisits(cur);}
-function updQueue(){const n=vqGet().filter(r=>r.author===me?.id).length;$('vQueue').hidden=!n;$('vQueue').textContent=`Ждут отправки визитов: ${n}. Уйдут сами, когда появится интернет.`;}
-addEventListener('online',flushVisits);setInterval(()=>{if(navigator.onLine)flushVisits();},60000);
+function updQueue(){const n=vqGet().filter(r=>r.author===me?.id).length,m=oqMine().length;$('vQueue').hidden=!(n||m);
+  $('vQueue').textContent=`Ждут отправки: ${[m?'правок '+m:'',n?'визитов '+n:''].filter(Boolean).join(', ')}. Уйдут сами, когда появится интернет.`;}
+async function flushAll(){await flushOutbox();await flushVisits();}
+addEventListener('online',async()=>{await flushAll();if(me&&offline)loadAll();}); // сначала отправляем своё, потом берём свежееsetInterval(()=>{if(navigator.onLine)flushAll();},60000);
+
+// ---- правки без интернета: изменения точек, комментарии и новые точки ждут в телефоне и уходят по порядку ----
+const OQ='karta_outbox',SAVED_LOCAL='Сохранено в телефоне, отправится, когда появится интернет.';
+function oqGet(){try{return JSON.parse(localStorage.getItem(OQ)||'[]');}catch{return[];}}
+function oqSet(a){try{localStorage.setItem(OQ,JSON.stringify(a));}catch{}}
+const oqMine=()=>oqGet().filter(o=>o.author===me?.id);
+function oqPush(op){const q=oqGet();q.push({...op,k:Math.random().toString(36).slice(2),author:me.id,at:new Date().toISOString()});oqSet(q);updQueue();}
+const oqHas=id=>oqMine().some(o=>o.id===id||o.tmp===id);
+// с сетью сохраняем сразу; без сети, или если по этой точке уже есть неотправленное, ставим в очередь
+async function savePlace(id,patch){
+  if(id>0&&navigator.onLine&&!oqHas(id)){
+    const r=await tmo(sb.from('places').update(patch).eq('id',id).select().single(),15000);
+    if(r!=='timeout'&&!(r.error&&isNet(r.error)))return r;}
+  oqPush({t:'upd',id,patch});if(navigator.onLine)setTimeout(flushAll,3000);
+  return{data:{...patch,updated_at:new Date().toISOString()},queued:true};}
+async function addCmt(id,body){
+  if(id>0&&navigator.onLine&&!oqHas(id)){
+    const{error}=await sb.from('place_comments').insert({place_id:id,author:me.id,body});
+    if(!error||!isNet(error))return{error};}
+  oqPush({t:'cmt',id,body});return{queued:true};}
+// после загрузки с сервера заново накладываем свои неотправленные правки, чтобы они не пропали с экрана
+function applyPending(){for(const o of oqMine()){
+  if(o.t==='ins'&&!places.some(x=>x.id===o.tmp))places.unshift({...o.place});
+  if(o.t==='upd'){const p=places.find(x=>x.id===o.id);if(p)Object.assign(p,o.patch);}}}
+let flushing=false;
+async function flushOutbox(){if(flushing||!me||!navigator.onLine)return;flushing=true;const fails=[];
+  try{for(;;){const op=oqMine()[0];if(!op)break;let res;
+    if(op.t==='ins')res=await sb.from('places').insert(op.row).select().single();
+    else if(op.t==='upd')res=await sb.from('places').update(op.patch).eq('id',op.id).select().single();
+    else res=await sb.from('place_comments').insert({place_id:op.id,author:op.author,body:op.body,created_at:op.at});
+    if(res.error&&isNet(res.error))break;
+    let q=oqGet().filter(o=>o.k!==op.k);
+    if(res.error){const p=places.find(x=>x.id===(op.id??op.tmp));fails.push(`«${p?.name||'точка'}»: ${res.error.message}`);}
+    else if(op.t==='ins'){const id=res.data.id,p=places.find(x=>x.id===op.tmp);
+      q=q.map(o=>o.id===op.tmp?{...o,id}:o);vqSet(vqGet().map(r=>r.place_id===op.tmp?{...r,place_id:id}:r));
+      markers.get(op.tmp)?.remove();markers.delete(op.tmp);if(cur===op.tmp)cur=id;
+      if(p){Object.assign(p,res.data);refreshMarker(p);}}
+    else if(op.t==='upd'){const p=places.find(x=>x.id===op.id);if(p&&res.data){Object.assign(p,res.data);applyPending();refreshMarker(p);}}
+    oqSet(q);}}
+  finally{flushing=false;updQueue();}
+  if(fails.length)alert('Не удалось отправить '+fails.length+' правк(и):\n'+fails.join('\n'));
+  if(cur)loadComments(cur);}
 async function loadVisits(id){const box=$('visits');box.innerHTML='';
   const q=vqGet().filter(r=>r.place_id===id).map(r=>({...r,queued:true}));
   const{data,error}=await sb.from('visits').select('*').eq('place_id',id).order('visited_at',{ascending:false});
