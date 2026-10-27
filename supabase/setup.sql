@@ -3,6 +3,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users on delete cascade,
   full_name text,
   role text not null default 'member' check (role in ('admin','member')),
+  can_delete_places boolean not null default false,
   created_at timestamptz default now()
 );
 create table if not exists public.places (
@@ -24,6 +25,7 @@ create table if not exists public.places (
   updated_at timestamptz default now()
 );
 -- для баз, созданных до появления скрытия точек
+alter table public.profiles add column if not exists can_delete_places boolean not null default false;
 alter table public.places add column if not exists hidden boolean not null default false;
 alter table public.places add column if not exists hidden_by uuid references public.profiles(id);
 alter table public.places add column if not exists hidden_at timestamptz;
@@ -51,6 +53,9 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 create or replace function public.is_admin() returns boolean language sql stable security definer set search_path = public as $$
   select exists(select 1 from public.profiles where id = auth.uid() and role = 'admin')
 $$;
+create or replace function public.can_delete_places() returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from public.profiles where id = auth.uid() and (role = 'admin' or can_delete_places))
+$$;
 
 create or replace function public.touch_updated_at() returns trigger language plpgsql as $$
 begin new.updated_at = now(); return new; end $$;
@@ -60,15 +65,16 @@ create trigger places_touch before update on public.places for each row execute 
 -- роль меняет только админ (иначе сотрудник мог бы сделать себя админом через свой профиль)
 create or replace function public.protect_role() returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if new.role is distinct from old.role and auth.uid() is not null and not public.is_admin() then
-    raise exception 'Менять роль может только администратор';
+  if (new.role is distinct from old.role or new.can_delete_places is distinct from old.can_delete_places)
+     and auth.uid() is not null and not public.is_admin() then
+    raise exception 'Менять роль и права может только администратор';
   end if;
   return new;
 end $$;
 drop trigger if exists profiles_protect_role on public.profiles;
 create trigger profiles_protect_role before update on public.profiles for each row execute function public.protect_role();
 
--- доступ: только вошедшие сотрудники; удалять точки может только админ
+-- доступ: только вошедшие сотрудники; удалять точки может админ или сотрудник с правом can_delete_places
 alter table public.profiles enable row level security;
 alter table public.places enable row level security;
 alter table public.place_comments enable row level security;
@@ -83,7 +89,7 @@ create policy "team adds places" on public.places for insert to authenticated wi
 drop policy if exists "team edits places" on public.places;
 create policy "team edits places" on public.places for update to authenticated using (true);
 drop policy if exists "admin deletes places" on public.places;
-create policy "admin deletes places" on public.places for delete to authenticated using (public.is_admin());
+create policy "admin deletes places" on public.places for delete to authenticated using (public.can_delete_places());
 drop policy if exists "team reads comments" on public.place_comments;
 create policy "team reads comments" on public.place_comments for select to authenticated using (true);
 drop policy if exists "team adds comments" on public.place_comments;

@@ -261,7 +261,7 @@ function toggleLocate(){
 async function fetchAll(table,select){let out=[],from=0;for(;;){const{data,error}=await sb.from(table).select(select).range(from,from+999);if(error)throw error;out=out.concat(data);if(data.length<1000)break;from+=1000;}return out;}
 async function loadAll(){
   try{
-    [profiles,places]=await Promise.all([fetchAll('profiles','id,full_name,role'),fetchAll('places','*')]);
+    [profiles,places]=await Promise.all([fetchAll('profiles','*'),fetchAll('places','*')]);
   }catch(err){$('cnt').textContent='Ошибка загрузки: '+err.message;return;}
   const mine=profiles.find(p=>p.id===me.id);$('me').textContent=(mine?.full_name||me.email)+(mine?.role==='admin'?' · админ':'');
   const o=$('e_owner');o.innerHTML='<option value="">—</option>';profiles.forEach(p=>o.add(new Option(p.full_name||p.id,p.id)));
@@ -313,7 +313,7 @@ async function openPlace(id,fly){
   $('e_owner').value=p.owner||'';$('e_reason').value='';$('reasonBox').hidden=true;
   $('pRefNote').hidden=p.status!=='refused';$('pRefNote').textContent='Отказ: с нами не работает, время на эту точку не тратить.';
   $('pMeta').textContent=`Источник: ${p.source||'добавлено вручную'} · изменено ${new Date(p.updated_at).toLocaleString('ru-RU')}`;
-  $('pDelete').hidden=!(profiles.find(x=>x.id===me.id)?.role==='admin');$('pErr').textContent='';
+  const mp=profiles.find(x=>x.id===me.id);$('pDelete').hidden=!(mp?.role==='admin'||mp?.can_delete_places);$('pErr').textContent='';
   showCoords(p);showHidden(p);
   if(fly&&p.lat!=null){map.setView(pos(p),Math.max(map.getZoom(),15),{animate:false});if(innerWidth>760)map.panBy([$('panel').offsetWidth/2,0],{animate:false});}
   $('visitForm').hidden=true;$('pVisit').hidden=false;
