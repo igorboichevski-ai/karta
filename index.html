@@ -221,12 +221,13 @@ function initMap(){
   const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© участники OpenStreetMap'});
   const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Снимки © Esri, Maxar, Earthstar Geographics'});
   const labels=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19});
+  const roads=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{maxZoom:19});
   // архив снимков Esri (Wayback): последний выпуск каждого года
   const WB=[['2026','63116'],['2025','13192'],['2024','16453'],['2023','56102'],['2022','45134'],['2021','26120'],['2020','29260'],['2019','4756'],['2018','23448'],['2017','25521'],['2016','18966'],['2015','28163'],['2014','5844']];
   const wbUrl=r=>`https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/${r}/{z}/{y}/{x}`;
   const arch=L.tileLayer(wbUrl(WB[0][1]),{maxZoom:19,attribution:'Архив снимков © Esri World Imagery Wayback'});
   osm.addTo(map);
-  const bases={'Схема':osm,'Спутник':sat,'Спутник с подписями':L.layerGroup([sat,labels]),'Спутник: архив по годам':arch};
+  const bases={'Схема':osm,'Спутник':sat,'Гибрид: спутник + дороги':L.layerGroup([sat,roads,labels]),'Спутник: архив по годам':arch};
   layersCtl=L.control.layers(bases).addTo(map);
   const Y=L.Control.extend({options:{position:'topright'},onAdd(){
     const d=L.DomUtil.create('div','leaflet-bar yearbox');d.hidden=true;
@@ -244,7 +245,10 @@ let layersCtl=null;
 async function addMapbox(){
   let t=KARTA_CONFIG.mapboxToken;
   if(!t){const{data}=await sb.from('app_settings').select('value').eq('key','mapbox_token').maybeSingle();t=data?.value;}
-  if(t)layersCtl.addBaseLayer(L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/512/{z}/{x}/{y}?access_token=${t}`,{tileSize:512,zoomOffset:-1,maxZoom:19,attribution:'© Mapbox © OpenStreetMap © Maxar'}),'Спутник Mapbox');
+  if(!t)return;
+  const mb=style=>L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/${style}/tiles/512/{z}/{x}/{y}?access_token=${t}`,{tileSize:512,zoomOffset:-1,maxZoom:19,attribution:'© Mapbox © OpenStreetMap © Maxar'});
+  layersCtl.addBaseLayer(mb('satellite-v9'),'Спутник Mapbox');
+  layersCtl.addBaseLayer(mb('satellite-streets-v12'),'Гибрид Mapbox');
 }
 // «Где я»: кнопка под зумом, точка обновляется при движении, как в навигаторе
 let geoWatch=null,geoDot=null,geoAcc=null,geoFollow=false;
