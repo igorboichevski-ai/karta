@@ -226,7 +226,10 @@ function initMap(){
   const wbUrl=r=>`https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/${r}/{z}/{y}/{x}`;
   const arch=L.tileLayer(wbUrl(WB[0][1]),{maxZoom:19,attribution:'Архив снимков © Esri World Imagery Wayback'});
   osm.addTo(map);
-  L.control.layers({'Схема':osm,'Спутник':sat,'Спутник с подписями':L.layerGroup([sat,labels]),'Спутник: архив по годам':arch}).addTo(map);
+  const bases={'Схема':osm,'Спутник':sat,'Спутник с подписями':L.layerGroup([sat,labels]),'Спутник: архив по годам':arch};
+  const mbt=KARTA_CONFIG.mapboxToken;
+  if(mbt)bases['Спутник Mapbox']=L.tileLayer(`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${mbt}`,{tileSize:512,zoomOffset:-1,maxZoom:19,attribution:'© Mapbox © Maxar'});
+  L.control.layers(bases).addTo(map);
   const Y=L.Control.extend({options:{position:'topright'},onAdd(){
     const d=L.DomUtil.create('div','leaflet-bar yearbox');d.hidden=true;
     const sel=L.DomUtil.create('select','',d);sel.id='wbYear';sel.title='Год снимка';
