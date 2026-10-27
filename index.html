@@ -296,7 +296,7 @@ async function loadAll(){
 }
 function mStyle(p){const t=TYPES[p.type]||TYPES.wood_osm,on=p.id===cur;
   if(p.status==='refused'&&!on&&!p.hidden)return{radius:t[2]+1,weight:4,color:css('--refused'),fillColor:css('--muted'),fillOpacity:.6};
-  if(p.hidden&&!on)return{radius:t[2],weight:1.5,color:css('--muted'),dashArray:'3 3',fillColor:css(t[1]),fillOpacity:.35};
+  if(p.hidden&&!on)return{radius:t[2]+1,weight:2,color:'#fff',dashArray:'3 2',fillColor:css(t[1]),fillOpacity:.85};
   return on?{radius:t[2]+6,weight:4,color:css('--sel-ring'),fillColor:css(t[1]),fillOpacity:1}:{radius:t[2],weight:p.status==='client'?3:1.5,color:p.status==='client'?css('--fg'):css('--panel'),fillColor:css(t[1]),fillOpacity:1};}
 // точки с одинаковыми координатами раскладываем по маленькому кругу, чтобы каждую можно было выбрать
 let offs=new Map();
