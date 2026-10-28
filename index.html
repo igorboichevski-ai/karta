@@ -676,6 +676,9 @@ async function loadVisits(id){const box=$('visits');box.innerHTML='';
   const q=vqGet().filter(r=>r.place_id===id).map(r=>({...r,queued:true}));
   const{data,error}=await sb.from('visits').select('*').eq('place_id',id).order('visited_at',{ascending:false});
   const all=q.concat(error?[]:data);
+  // флажок на карте следует за визитами: удалили последний — точка снова кружок
+  const pl=places.find(x=>x.id===id);
+  if(pl&&!error){const was=isVisited(pl);data.length?visited.add(id):visited.delete(id);if(isVisited(pl)!==was){refreshMarker(pl);}}
   if(!all.length){box.innerHTML=`<span class="k">${error&&!q.length?(isNet(error)?'Визиты появятся, когда будет интернет.':'Визиты ещё не включены (нужен скрипт update_visits.sql).'):'Визитов пока не было.'}</span>`;return;}
   all.forEach(v=>{const d=document.createElement('div');d.className='vitem'+(v.queued?' queued':'');const a=profiles.find(x=>x.id===v.author);
     d.innerHTML='<div class="k"></div><div><b></b></div><div></div>';
