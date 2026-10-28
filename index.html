@@ -251,7 +251,9 @@ const FLAG={new:'#ffffff',to_check:'#fab005',contacted:'#1c7ed6',negotiation:'#f
 const flagSvg=(c,h=26)=>`<svg width="${Math.round(h*.77)}" height="${h}" viewBox="0 0 20 26" aria-hidden="true"><path d="M3.5 25V2" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M3.5 25V2" stroke="#222" stroke-width="2" stroke-linecap="round"/><path d="M4.5 2.5h13l-3.4 4.6 3.4 4.6h-13z" fill="${c}" stroke="${c==='#ffffff'?'#495057':'#fff'}" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
 let visited=new Set(),vqIds=new Set();
 const isVisited=p=>visited.has(p.id)||vqIds.has(p.id);
-function flagIcon(p,on){const h=on?44:32,w=Math.round(h*.77);
+// размер флажка растёт с масштабом, чтобы на общем виде он был не больше соседних кружков
+const flagH=()=>{const z=map?map.getZoom():12;return z<=7?16:z<=8?18:z<=10?22:z<=12?26:30;};
+function flagIcon(p,on){const h=flagH()+(on?10:0),w=Math.round(h*.77);
   return L.divIcon({className:'flagicon'+(p.hidden&&!on?' hid':''),html:flagSvg(FLAG[p.status]||'#adb5bd',h),iconSize:[w,h],iconAnchor:[Math.round(h*.135),h-1],tooltipAnchor:[w/2,-h/2]});}
 // меню статусов с флажками: настоящий <select> остаётся (значение и события), поверх него кнопка и список
 function flagSelect(sel){
@@ -309,6 +311,7 @@ function initMap(){
   map.on('baselayerchange',e=>{yc.getContainer().hidden=e.layer!==arch;});
   addLocate();
   addRegions();
+  map.on('zoomend',()=>markers.forEach((m,id)=>{if(m.setStyle)return;const p=places.find(x=>x.id===id);if(p)m.setIcon(flagIcon(p,id===cur));}));
   map.on('click',e=>{if(mode==='add')createAt(e.latlng);else if(mode==='move')moveTo(e.latlng);});
 }
 // ---- области и районы (regions.geojson из OpenStreetMap): заливка областей, границы областей и районов, подписи ----
