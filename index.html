@@ -67,6 +67,9 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .locbtn{width:34px;height:34px;padding:0;display:grid;place-items:center;font-size:18px;line-height:1;background:var(--panel);color:var(--fg);border:0;border-radius:4px}
 .locbtn.on{color:var(--me)}
+.rlabel{background:none;border:0;box-shadow:none;padding:0;font-size:11px;font-weight:500;color:#3b4a40;text-shadow:0 0 3px #fff,0 0 3px #fff}
+.rlabel.obl{font-size:14px;font-weight:600;color:#1d2a22}
+.rlabel::before{display:none}
 .yearbox select{font:inherit;font-size:13px;padding:5px 6px;border:0;border-radius:4px;background:var(--panel);color:var(--fg)}
 .locbtn.wait{animation:locblink 1s infinite}
 @keyframes locblink{50%{opacity:.4}}
@@ -269,7 +272,32 @@ function initMap(){
   const yc=new Y().addTo(map);
   map.on('baselayerchange',e=>{yc.getContainer().hidden=e.layer!==arch;});
   addLocate();
+  addRegions();
   map.on('click',e=>{if(mode==='add')createAt(e.latlng);else if(mode==='move')moveTo(e.latlng);});
+}
+// ---- области и районы (regions.geojson из OpenStreetMap): заливка областей, границы областей и районов, подписи ----
+const OBL_COLORS={'Брестская область':'#f76707','Витебская область':'#1971c2','Гомельская область':'#2b8a3e','Гродненская область':'#9c36b5','Минская область':'#fab005','Могилёвская область':'#c2255c','Минск':'#495057'};
+const RG_OFF='karta_regions_off';
+async function addRegions(){
+  let gj;try{gj=await (await fetch('regions.geojson')).json();}catch{return;}
+  map.createPane('regions').style.zIndex=350;map.getPane('regions').style.pointerEvents='none';
+  const lvl=n=>f=>f.properties.level===n,o={pane:'regions',interactive:false};
+  const fill=L.geoJSON(gj,{...o,filter:lvl(4),style:f=>({stroke:false,fillColor:OBL_COLORS[f.properties.name]||'#868e96',fillOpacity:.16})});
+  const oblB=L.layerGroup([L.geoJSON(gj,{...o,filter:lvl(4),style:{color:'#fff',weight:5,opacity:.7,fill:false}}),
+    L.geoJSON(gj,{...o,filter:lvl(4),attribution:'Границы © участники OpenStreetMap',style:{color:'#343a40',weight:2,opacity:.9,fill:false}})]);
+  const raiB=L.layerGroup([L.geoJSON(gj,{...o,filter:lvl(6),style:{color:'#fff',weight:3,opacity:.45,fill:false}}),
+    L.geoJSON(gj,{...o,filter:lvl(6),style:{color:'#343a40',weight:1.3,opacity:.8,dashArray:'5 4',fill:false}})]);
+  // подписи: области на мелком масштабе, районы при приближении
+  const lab=(f,cls)=>L.tooltip({permanent:true,direction:'center',className:'rlabel '+cls,interactive:false}).setLatLng(f.properties.lp).setContent(f.properties.name.replace(' область','').replace(' район',''));
+  const oblL=L.layerGroup(gj.features.filter(lvl(4)).map(f=>lab(f,'obl'))),raiL=L.layerGroup(gj.features.filter(lvl(6)).map(f=>lab(f,'rai')));
+  const layers={'Области цветом':fill,'Границы областей':oblB,'Границы районов':raiB};
+  let off=[];try{off=JSON.parse(localStorage.getItem(RG_OFF)||'[]');}catch{}
+  for(const[k,l]of Object.entries(layers)){if(!off.includes(k))l.addTo(map);layersCtl.addOverlay(l,k);}
+  const save=()=>{try{localStorage.setItem(RG_OFF,JSON.stringify(Object.keys(layers).filter(k=>!map.hasLayer(layers[k]))));}catch{}};
+  const labels=()=>{const z=map.getZoom();(z<=8&&(map.hasLayer(fill)||map.hasLayer(oblB))?oblL.addTo(map):oblL.remove());(z>=10&&map.hasLayer(raiB)?raiL.addTo(map):raiL.remove());};
+  // на спутнике заливка бледнее, чтобы не закрывать снимок
+  map.on('baselayerchange',e=>fill.setStyle({fillOpacity:e.name==='Схема'?.16:.07}));
+  map.on('overlayadd overlayremove',()=>{save();labels();});map.on('zoomend',labels);labels();
 }
 // Спутник Mapbox: ключ берём из config.js или из базы (таблица app_settings, видна только вошедшим)
 let layersCtl=null;
