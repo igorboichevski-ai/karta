@@ -70,6 +70,19 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .rlabel{background:none;border:0;box-shadow:none;padding:0;font-size:11px;font-weight:500;color:#3b4a40;text-shadow:0 0 3px #fff,0 0 3px #fff}
 .rlabel.obl{font-size:14px;font-weight:600;color:#1d2a22}
 .rlabel::before{display:none}
+/* флажки визитов и меню статусов с флажками */
+.flagicon{background:none;border:0}
+.flagicon svg{display:block;filter:drop-shadow(0 1px 1.5px rgb(0 0 0/.45))}
+.flagicon.hid{opacity:.6}
+.fsel{position:relative;flex:1 1 0;min-width:0}
+.row>select{flex:1 1 0;min-width:0}
+.fsel-btn{width:100%;display:flex;align-items:center;gap:7px;background:var(--bg);text-align:left;padding:7px 9px;min-height:34px}
+.fsel-btn span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsel-btn i{font-style:normal;color:var(--muted);font-size:11px}
+.fsel-list{position:absolute;left:0;top:100%;z-index:2100;min-width:100%;box-sizing:border-box;margin:2px 0 0;padding:4px 0;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgb(0 0 0/.18);max-height:320px;overflow:auto}
+.fsel-list li{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;white-space:nowrap;color:var(--fg)}
+.fsel-list li:hover,.fsel-list li.on{background:var(--sel)}
+.fsel-btn .fsel-nf,.fsel-nf{display:inline-block;width:14px;flex:none}
 .yearbox select{font:inherit;font-size:13px;padding:5px 6px;border:0;border-radius:4px;background:var(--panel);color:var(--fg)}
 .locbtn.wait{animation:locblink 1s infinite}
 @keyframes locblink{50%{opacity:.4}}
@@ -100,7 +113,7 @@ a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 #offNote{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:900;background:var(--cand);color:#1d2a22;border-radius:99px;padding:5px 12px;font-size:13px;font-weight:500;white-space:nowrap;box-shadow:0 2px 8px rgb(0 0 0/.2)}
 /* телефон: карта на весь экран, список отдельной вкладкой, внизу переключатель */
 @media (max-width:760px){
-  input,select,textarea{font-size:16px}
+  input,select,textarea,.fsel-btn{font-size:16px}
   #app{display:block;position:relative;height:100%}
   .mapwrap,aside{position:absolute;left:0;right:0;top:0;bottom:calc(56px + env(safe-area-inset-bottom))}
   aside{z-index:1500;border-right:0;overflow:auto;display:none}
@@ -233,6 +246,29 @@ function opts(sel,obj,first){sel.innerHTML=first?`<option value="">${first}</opt
 opts($('v_result'),RESULTS);opts($('fType'),TYPES,'Все типы');opts($('fStatus'),STATUSES,'Все статусы');opts($('e_type'),TYPES);opts($('e_status'),STATUSES);
 REGIONS.forEach(r=>{$('fRegion').add(new Option(r,r));});$('e_region').add(new Option('—',''));REGIONS.forEach(r=>$('e_region').add(new Option(r,r)));
 
+// ---- флажки: точка, где был визит, рисуется флажком цвета своего статуса; отказ — чёрный ----
+const FLAG={new:'#ffffff',to_check:'#fab005',contacted:'#1c7ed6',negotiation:'#f76707',client:'#2b8a3e',refused:'#000000',closed:'#868e96'};
+const flagSvg=(c,h=26)=>`<svg width="${Math.round(h*.77)}" height="${h}" viewBox="0 0 20 26" aria-hidden="true"><path d="M3.5 25V2" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M3.5 25V2" stroke="#222" stroke-width="2" stroke-linecap="round"/><path d="M4.5 2.5h13l-3.4 4.6 3.4 4.6h-13z" fill="${c}" stroke="${c==='#ffffff'?'#495057':'#fff'}" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
+let visited=new Set(),vqIds=new Set();
+const isVisited=p=>visited.has(p.id)||vqIds.has(p.id);
+function flagIcon(p,on){const h=on?44:32,w=Math.round(h*.77);
+  return L.divIcon({className:'flagicon'+(p.hidden&&!on?' hid':''),html:flagSvg(FLAG[p.status]||'#adb5bd',h),iconSize:[w,h],iconAnchor:[Math.round(h*.135),h-1],tooltipAnchor:[w/2,-h/2]});}
+// меню статусов с флажками: настоящий <select> остаётся (значение и события), поверх него кнопка и список
+function flagSelect(sel){
+  const w=document.createElement('div');w.className='fsel';sel.after(w);sel.hidden=true;
+  const b=document.createElement('button');b.type='button';b.className='fsel-btn';const ul=document.createElement('ul');ul.className='fsel-list';ul.hidden=true;w.append(b,ul);
+  const ico=v=>FLAG[v]?flagSvg(FLAG[v],18):'<span class="fsel-nf"></span>';
+  const draw=()=>{const o=sel.selectedOptions[0];b.innerHTML=ico(o?.value)+'<span></span><i>▾</i>';b.children[1].textContent=o?.text||'';
+    [...ul.children].forEach(li=>li.classList.toggle('on',li.dataset.v===sel.value));};
+  [...sel.options].forEach(o=>{const li=document.createElement('li');li.dataset.v=o.value;li.innerHTML=ico(o.value)+'<span></span>';li.children[1].textContent=o.text;
+    li.onclick=e=>{e.preventDefault();e.stopPropagation();sel.value=o.value;ul.hidden=true;sel.dispatchEvent(new Event('input',{bubbles:true}));sel.dispatchEvent(new Event('change',{bubbles:true}));};ul.appendChild(li);});
+  b.onclick=e=>{e.preventDefault();document.querySelectorAll('.fsel-list').forEach(x=>{if(x!==ul)x.hidden=true;});ul.hidden=!ul.hidden;};
+  document.addEventListener('click',e=>{if(!w.contains(e.target))ul.hidden=true;});
+  const d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');
+  Object.defineProperty(sel,'value',{get(){return d.get.call(this);},set(v){d.set.call(this,v);draw();},configurable:true});
+  draw();}
+flagSelect($('fStatus'));flagSelect($('e_status'));
+
 async function boot(){
   // без сети с устаревшим входом Supabase долго пытается его обновить, поэтому ждём недолго, если есть сохранённые точки
   const snap=await kv('get',SNAP);
@@ -347,7 +383,7 @@ const SNAP='snapshot';let offline=false,snapT=null;
 function idb(){return new Promise((ok,no)=>{const r=indexedDB.open('karta',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);});}
 async function kv(op,key,val){try{const db=await idb();return await new Promise((ok,no)=>{const st=db.transaction('kv',op==='get'?'readonly':'readwrite').objectStore('kv');
   const r=op==='get'?st.get(key):op==='put'?st.put(val,key):st.delete(key);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);});}catch{return null;}}
-function snapSave(){clearTimeout(snapT);snapT=setTimeout(()=>{if(me&&places.length)kv('put',SNAP,{uid:me.id,email:me.email,at:Date.now(),profiles,places});},1000);}
+function snapSave(){clearTimeout(snapT);snapT=setTimeout(()=>{if(me&&places.length)kv('put',SNAP,{uid:me.id,email:me.email,at:Date.now(),profiles,places,visited:[...visited]});},1000);}
 const tmo=(pr,ms)=>Promise.race([pr,new Promise(r=>setTimeout(()=>r('timeout'),ms))]);
 const isNet=e=>!navigator.onLine||/fetch|network|Load failed/i.test(e?.message||String(e));
 const errText=e=>isNet(e)?'Нет интернета: не сохранилось. Повторите, когда появится связь (визиты можно отмечать, они уйдут сами).':e.message;
@@ -355,13 +391,13 @@ async function fetchAll(table,select){let out=[],from=0;for(;;){const{data,error
 async function loadAll(){
   const sn0=await kv('get',SNAP),sn=sn0?.uid===me.id?sn0:null;
   try{
-    const go=Promise.all([fetchAll('profiles','*'),fetchAll('places','*')]);
+    const go=Promise.all([fetchAll('profiles','*'),fetchAll('places','*'),fetchAll('visits','place_id').catch(()=>null)]);
     const r=await (sn?tmo(go,navigator.onLine?20000:1500):go);if(r==='timeout')throw new Error('network timeout');
-    [profiles,places]=r;
+    [profiles,places]=r;if(r[2])visited=new Set(r[2].map(v=>v.place_id));
     offline=false;$('offNote').hidden=true;snapSave();
   }catch(err){
     if(!sn){$('cnt').textContent=isNet(err)?'Нет интернета, а сохранённых точек в этом браузере ещё нет.':'Ошибка загрузки: '+err.message;return;}
-    profiles=sn.profiles;places=sn.places;offline=true;setTimeout(()=>{if(offline&&navigator.onLine)loadAll();},60000);
+    profiles=sn.profiles;places=sn.places;visited=new Set(sn.visited||[]);offline=true;setTimeout(()=>{if(offline&&navigator.onLine)loadAll();},60000);
     $('offNote').textContent='Нет интернета · точки на '+new Date(sn.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});$('offNote').hidden=false;}
   const mine=profiles.find(p=>p.id===me.id);$('me').textContent=(mine?.full_name||me.email)+(mine?.role==='admin'?' · админ':'');
   // служебные учётки (…@karta.local) в списках людей не показываем
@@ -372,7 +408,7 @@ async function loadAll(){
   [...people].sort((a,b)=>(a.full_name||'').localeCompare(b.full_name||'','ru')).forEach(p=>{const n=places.filter(x=>x.owner===p.id).length;
     const op=new Option(`${p.full_name||'Без имени'} (${n})`,p.id);op.className='person';fo.add(op);});
   fo.value=[...fo.options].some(x=>x.value===keep)?keep:'';
-  applyPending();
+  applyPending();vqIds=new Set(vqGet().map(r=>r.place_id));
   markers.forEach(m=>m.remove());markers.clear();
   spread();places.forEach(p=>{if(p.lat!=null)markers.set(p.id,mkMarker(p));});
   render();
@@ -386,12 +422,14 @@ let offs=new Map();
 function spread(){offs=new Map();const g=new Map();places.forEach(p=>{if(p.lat==null)return;const k=(+p.lat).toFixed(5)+','+(+p.lon).toFixed(5);g.has(k)?g.get(k).push(p):g.set(k,[p]);});
   g.forEach(a=>{if(a.length<2)return;a.forEach((p,i)=>{const r=0.00025,f=2*Math.PI*i/a.length;offs.set(p.id,[r*Math.sin(f),r*Math.cos(f)/Math.cos(p.lat*Math.PI/180)]);});});}
 function pos(p){const o=offs.get(p.id)||[0,0];return[+p.lat+o[0],+p.lon+o[1]];}
-function mkMarker(p){return L.circleMarker(pos(p),mStyle(p)).bindTooltip(p.status==='refused'?p.name+' · отказ':p.name).on('click',()=>openPlace(p.id));}
+function mkMarker(p){const tip=p.status==='refused'?p.name+' · отказ':p.name;
+  if(isVisited(p))return L.marker(pos(p),{icon:flagIcon(p,p.id===cur),zIndexOffset:500,keyboard:false}).bindTooltip(tip).on('click',()=>openPlace(p.id));
+  return L.circleMarker(pos(p),mStyle(p)).bindTooltip(tip).on('click',()=>openPlace(p.id));}
 let halo=null;
 function highlight(){
-  markers.forEach((m,id)=>{const p=places.find(x=>x.id===id);if(p)m.setStyle(mStyle(p));});
+  markers.forEach((m,id)=>{const p=places.find(x=>x.id===id);if(!p)return;m.setStyle?m.setStyle(mStyle(p)):m.setIcon(flagIcon(p,id===cur));});
   halo?.remove();halo=null;markers.forEach(x=>x.closeTooltip());const m=markers.get(cur);if(!m)return;
-  if(!map.hasLayer(m))m.addTo(map);m.bringToFront();
+  if(!map.hasLayer(m))m.addTo(map);m.bringToFront?m.bringToFront():m.setZIndexOffset(1000);
   halo=L.circleMarker(m.getLatLng(),{radius:22,weight:3,color:css('--sel-ring'),fill:false,interactive:false}).addTo(map);
   m.openTooltip();
 }
@@ -564,7 +602,8 @@ $('v_save').onclick=async()=>{const p=places.find(x=>x.id===cur);if(!p)return;
     products:v('products'),volume:v('volume'),next_step:v('next'),next_date:v('next_date'),notes:v('notes'),lat:vPos?.lat??null,lon:vPos?.lng??null};
   $('v_save').disabled=true;const r=p.id<0?'queued':await sendVisit(row);$('v_save').disabled=false;
   if(r==='error')return;
-  if(r==='queued'){const q=vqGet();q.push(row);vqSet(q);updQueue();}
+  if(r==='queued'){const q=vqGet();q.push(row);vqSet(q);updQueue();}else visited.add(p.id);
+  refreshMarker(p);
   $('visitForm').hidden=true;$('pVisit').hidden=false;if(cur===p.id){openPlace(p.id);}};
 // 'ok' | 'queued' (нет связи) | 'error'
 async function sendVisit(row){
@@ -582,9 +621,9 @@ async function applyVisit(row){const p=places.find(x=>x.id===row.place_id);if(!p
   if(row.result==='refused')await sb.from('place_comments').insert({place_id:p.id,author:row.author,body:'Отказ: '+(row.notes||'')});
 }
 async function flushVisits(){if(!me)return;const q=vqGet();if(!q.length){updQueue();return;}const left=[];
-  for(const row of q){if(row.author!==me.id||row.place_id<0){left.push(row);continue;}const r=await sendVisit(row);if(r!=='ok')left.push(row);}
+  for(const row of q){if(row.author!==me.id||row.place_id<0){left.push(row);continue;}const r=await sendVisit(row);if(r!=='ok')left.push(row);else visited.add(row.place_id);}
   vqSet(left);updQueue();if(cur)loadVisits(cur);}
-function updQueue(){const n=vqGet().filter(r=>r.author===me?.id).length,m=oqMine().length;$('vQueue').hidden=!(n||m);
+function updQueue(){vqIds=new Set(vqGet().map(r=>r.place_id));const n=vqGet().filter(r=>r.author===me?.id).length,m=oqMine().length;$('vQueue').hidden=!(n||m);
   $('vQueue').textContent=`Ждут отправки: ${[m?'правок '+m:'',n?'визитов '+n:''].filter(Boolean).join(', ')}. Уйдут сами, когда появится интернет.`;}
 async function flushAll(){await flushOutbox();await flushVisits();}
 addEventListener('online',async()=>{await flushAll();if(me&&offline)loadAll();}); // сначала отправляем своё, потом берём свежееsetInterval(()=>{if(navigator.onLine)flushAll();},60000);
